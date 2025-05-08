@@ -10,7 +10,8 @@ const envPath = join(__dirname, "..", "..", ".env");
 config({ path: envPath });
 
 // Check if we're in development mode
-const isDevelopment = process.env.NODE_ENV === "development";
+const isDevelopment = true;
+// process.env.NODE_ENV === "development";
 
 // Create a mock Arcjet instance for development
 const createMockArcjet = () => ({
@@ -92,8 +93,8 @@ export const arcjet = isDevelopment
 export const protectionRules = {
   rateLimit: {
     enabled: true,
-    maxRequests: 100,
-    window: 60,
+    max: 5,
+    window: "1m",
   },
   bot: {
     enabled: true,
@@ -101,12 +102,42 @@ export const protectionRules = {
   },
   ddos: {
     enabled: true,
+    threshold: 100,
+    window: "1m",
     maxRequestsPerSecond: 10,
   },
   waf: {
     enabled: true,
+    rules: {
+      sqlInjection: true,
+      xss: true,
+      pathTraversal: true,
+      commandInjection: true,
+    },
     blockXSS: true,
     blockSQLInjection: true,
     blockPathTraversal: true,
+  },
+  email: {
+    allowedDomains: ["iiitkottayam.ac.in"],
+    validateFormat: true,
+  },
+  requestValidation: {
+    body: {
+      type: "object",
+      properties: {
+        email: {
+          type: "string",
+          format: "email",
+          maxLength: 255,
+        },
+        password: {
+          type: "string",
+          minLength: 8,
+          maxLength: 100,
+        },
+      },
+      required: ["email", "password"],
+    },
   },
 };

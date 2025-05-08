@@ -7,30 +7,40 @@ const ConnectionStatus = () => {
   );
   const [message, setMessage] = useState("");
   const [timestamp, setTimestamp] = useState("");
+  const [retryCount, setRetryCount] = useState(0);
   const [isDebug] = useState(() => {
     // Check if we're in development mode
     return import.meta.env.DEV || import.meta.env.MODE === "development";
   });
 
-  useEffect(() => {
-    const checkConnection = async () => {
-      try {
-        const response = await api.health.check();
-        setStatus("connected");
-        setMessage(response.message);
-        setTimestamp(response.timestamp);
-      } catch (error) {
-        setStatus("error");
-        setMessage("Failed to connect to backend");
-        console.error("Connection error:", error);
-      }
-    };
+  const checkConnection = async () => {
+    try {
+      setStatus("checking");
+      const response = await api.health.check();
+      setStatus("connected");
+      setMessage(response.message);
+      setTimestamp(response.timestamp);
+      setRetryCount(0); // Reset retry count on success
+    } catch (error) {
+      setStatus("error");
+      setMessage("Failed to connect to backend");
+      console.error("Connection error:", error);
 
-    // Only check connection if in debug mode
+      // Implement exponential backoff for retries
+      if (retryCount < 5) {
+        const delay = Math.min(1000 * Math.pow(2, retryCount), 30000); // Max 30 seconds
+        setTimeout(() => {
+          setRetryCount((prev) => prev + 1);
+        }, delay);
+      }
+    }
+  };
+
+  useEffect(() => {
     if (isDebug) {
       checkConnection();
     }
-  }, [isDebug]);
+  }, [isDebug, retryCount]);
 
   // Don't render anything if not in debug mode
   if (!isDebug) {
@@ -65,12 +75,21 @@ const ConnectionStatus = () => {
           )}
         </div>
       )}
+      {status === "error" && (
+        <button
+          onClick={() => setRetryCount((prev) => prev + 1)}
+          className="mt-2 text-xs text-blue-600 hover:text-blue-800"
+        >
+          Retry connection
+        </button>
+      )}
       {/* Debug information */}
       <div className="mt-2 text-xs text-gray-500">
         <p>Environment: {import.meta.env.MODE}</p>
         <p>
           API URL: {import.meta.env.VITE_API_URL || "http://localhost:3000"}
         </p>
+        {retryCount > 0 && <p>Retry attempt: {retryCount}/5</p>}
       </div>
     </div>
   );

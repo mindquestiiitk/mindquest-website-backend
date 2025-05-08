@@ -1,115 +1,161 @@
-import { createContext, useContext, useState, useEffect } from "react";
-import { api } from "../lib/api.ts";
-
-interface User {
-  uid: string;
-  email: string;
-  role: string;
-  name?: string;
-  picture?: string;
-}
+import React, { createContext, useContext, useState, useEffect } from "react";
+import { authService, User } from "../services/auth.service";
 
 interface AuthContextType {
-  isAuthenticated: boolean;
   user: User | null;
-  token: string | null;
-  login: (
-    email: string,
-    password: string,
-    isGoogleLogin?: boolean
-  ) => Promise<void>;
-  logout: () => void;
+  loading: boolean;
+  error: string | null;
+  login: (email: string, password: string) => Promise<void>;
+  register: (name: string, email: string, password: string) => Promise<void>;
+  logout: () => Promise<void>;
+  updateProfile: (data: Partial<User>) => Promise<void>;
+  forgotPassword: (email: string) => Promise<void>;
+  resetPassword: (token: string, password: string) => Promise<void>;
   handleAuthCallback: (token: string) => void;
-  isLoading: boolean;
+  loginWithGoogle: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error("useAuth must be used within an AuthProvider");
-  }
-  return context;
-};
-
-interface AuthProviderProps {
-  children: React.ReactNode;
-}
-
-export const AuthProvider = ({ children }: AuthProviderProps) => {
+export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
+  children,
+}) => {
   const [user, setUser] = useState<User | null>(null);
-  const [token, setToken] = useState<string | null>(
-    localStorage.getItem("token")
-  );
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const validateToken = async () => {
-      if (token) {
-        try {
-          const response = await api.auth.validateToken(token);
-          setUser(response.data);
-          setIsAuthenticated(true);
-        } catch (error) {
-          localStorage.removeItem("token");
-          setToken(null);
-          setUser(null);
-          setIsAuthenticated(false);
+    const initAuth = async () => {
+      try {
+        if (authService.isAuthenticated()) {
+          const user = await authService.getCurrentUser();
+          setUser(user);
         }
+      } catch (error) {
+        console.error("Auth initialization error:", error);
+        setError(
+          error instanceof Error ? error.message : "Failed to initialize auth"
+        );
+      } finally {
+        setLoading(false);
       }
-      setIsLoading(false);
     };
 
-    validateToken();
-  }, [token]);
+    initAuth();
+  }, []);
 
-  const login = async (
-    email: string,
-    password: string,
-    isGoogleLogin?: boolean
-  ) => {
+  const login = async (email: string, password: string) => {
     try {
-      const response = isGoogleLogin
-        ? await api.auth.googleLogin(email) // email is actually the token in this case
-        : await api.auth.login(email, password);
-
-      const { token, ...userData } = response.data;
-      localStorage.setItem("token", token);
-      setToken(token);
-      setUser(userData);
-      setIsAuthenticated(true);
+      setError(null);
+      const user = await authService.login({ email, password });
+      setUser(user);
     } catch (error) {
+      setError(error instanceof Error ? error.message : "Login failed");
       throw error;
     }
   };
 
-  const logout = () => {
-    localStorage.removeItem("token");
-    setToken(null);
-    setUser(null);
-    setIsAuthenticated(false);
+  const register = async (name: string, email: string, password: string) => {
+    try {
+      setError(null);
+      const user = await authService.register({ name, email, password });
+      setUser(user);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Registration failed");
+      throw error;
+    }
+  };
+
+  const logout = async () => {
+    try {
+      setError(null);
+      await authService.logout();
+      setUser(null);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Logout failed");
+      throw error;
+    }
+  };
+
+  const updateProfile = async (data: Partial<User>) => {
+    try {
+      setError(null);
+      const updatedUser = await authService.updateProfile(data);
+      setUser(updatedUser);
+    } catch (error) {
+      setError(
+        error instanceof Error ? error.message : "Profile update failed"
+      );
+      throw error;
+    }
+  };
+
+  const forgotPassword = async (email: string) => {
+    try {
+      setError(null);
+      await authService.forgotPassword(email);
+    } catch (error) {
+      setError(
+        error instanceof Error
+          ? error.message
+          : "Failed to send password reset email"
+      );
+      throw error;
+    }
+  };
+
+  const resetPassword = async (token: string, password: string) => {
+    try {
+      setError(null);
+      await authService.resetPassword(token, password);
+    } catch (error) {
+      setError(
+        error instanceof Error ? error.message : "Failed to reset password"
+      );
+      throw error;
+    }
   };
 
   const handleAuthCallback = (token: string) => {
+    authService.token = token;
     localStorage.setItem("token", token);
-    setToken(token);
+    authService.setupAxiosInterceptors();
   };
 
-  return (
-    <AuthContext.Provider
-      value={{
-        isAuthenticated,
-        user,
-        token,
-        login,
-        logout,
-        isLoading,
-        handleAuthCallback,
-      }}
-    >
-      {children}
-    </AuthContext.Provider>
-  );
+  const loginWithGoogle = async () => {
+    try {
+      setError(null);
+      const user = await authService.loginWithGoogle();
+      setUser(user);
+    } catch (error) {
+      setError(
+        error instanceof Error ? error.message : "Failed to login with Google"
+      );
+      throw error;
+    }
+  };
+
+  const value = {
+    user,
+    loading,
+    error,
+    login,
+    register,
+    logout,
+    updateProfile,
+    forgotPassword,
+    resetPassword,
+    handleAuthCallback,
+    loginWithGoogle,
+  };
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+};
+
+export const useAuth = () => {
+  const context = useContext(AuthContext);
+  if (context === undefined) {
+    throw new Error("useAuth must be used within an AuthProvider");
+  }
+  return context;
 };

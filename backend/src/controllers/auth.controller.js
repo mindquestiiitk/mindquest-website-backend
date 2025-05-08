@@ -1,61 +1,180 @@
 import { AuthService } from "../services/auth.service.js";
+import { validateRequest } from "../utils/validation.js";
+import { createError } from "../utils/error.js";
+import { auth } from "../config/firebase.config.js";
 
 export class AuthController {
   constructor() {
     this.authService = new AuthService();
   }
 
-  register = async (req, res) => {
+  register = async (req, res, next) => {
     try {
-      const { email, password, role } = req.body;
+      const { email, password, name } = req.body;
 
-      if (!email || !password) {
-        return res.status(400).json({
-          success: false,
-          error: "Email and password are required",
-        });
-      }
+      // Validate request
+      validateRequest(req, {
+        email: { type: "string", required: true },
+        password: { type: "string", required: true, min: 6 },
+        name: { type: "string", required: true },
+      });
 
-      const result = await this.authService.registerUser(email, password, role);
+      const user = await this.authService.register({ email, password, name });
+
+      // Set session
+      req.session.userId = user.id;
 
       res.status(201).json({
         success: true,
-        data: result,
-        message: "User registered successfully",
+        data: {
+          user: {
+            id: user.id,
+            email: user.email,
+            name: user.name,
+            role: user.role,
+          },
+        },
       });
     } catch (error) {
-      console.error("Registration error:", error);
-      res.status(400).json({
-        success: false,
-        error: error.message || "Failed to register user",
-      });
+      next(error);
     }
   };
 
-  login = async (req, res) => {
+  login = async (req, res, next) => {
     try {
       const { email, password } = req.body;
 
-      if (!email || !password) {
-        return res.status(400).json({
-          success: false,
-          error: "Email and password are required",
-        });
-      }
+      // Validate request
+      validateRequest(req, {
+        email: { type: "string", required: true },
+        password: { type: "string", required: true },
+      });
 
-      const result = await this.authService.loginUser(email, password);
+      const { user, token } = await this.authService.login(email, password);
 
-      res.status(200).json({
+      // Set session
+      req.session.userId = user.id;
+
+      res.json({
         success: true,
-        data: result,
-        message: "Login successful",
+        data: {
+          user: {
+            id: user.id,
+            email: user.email,
+            name: user.name,
+            role: user.role,
+          },
+          token,
+        },
       });
     } catch (error) {
-      console.error("Login error:", error);
-      res.status(400).json({
-        success: false,
-        error: error.message || "Failed to login",
+      next(error);
+    }
+  };
+
+  logout = async (req, res, next) => {
+    try {
+      // Clear session
+      req.session.destroy();
+
+      res.json({
+        success: true,
+        message: "Logged out successfully",
       });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  getCurrentUser = async (req, res, next) => {
+    try {
+      const user = await this.authService.getUserById(req.user.id);
+
+      res.json({
+        success: true,
+        data: {
+          user: {
+            id: user.id,
+            email: user.email,
+            name: user.name,
+            role: user.role,
+          },
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  updateProfile = async (req, res, next) => {
+    try {
+      const { name, email } = req.body;
+
+      // Validate request
+      validateRequest(req, {
+        name: { type: "string", required: false },
+        email: { type: "string", required: false },
+      });
+
+      const user = await this.authService.updateUser(req.user.id, {
+        name,
+        email,
+      });
+
+      res.json({
+        success: true,
+        data: {
+          user: {
+            id: user.id,
+            email: user.email,
+            name: user.name,
+            role: user.role,
+          },
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  forgotPassword = async (req, res, next) => {
+    try {
+      const { email } = req.body;
+
+      // Validate request
+      validateRequest(req, {
+        email: { type: "string", required: true },
+      });
+
+      await this.authService.sendPasswordResetEmail(email);
+
+      res.json({
+        success: true,
+        message: "Password reset email sent",
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  resetPassword = async (req, res, next) => {
+    try {
+      const { token, password } = req.body;
+
+      // Validate request
+      validateRequest(req, {
+        token: { type: "string", required: true },
+        password: { type: "string", required: true, min: 6 },
+      });
+
+      await this.authService.resetPassword(token, password);
+
+      res.json({
+        success: true,
+        message: "Password reset successful",
+      });
+    } catch (error) {
+      next(error);
     }
   };
 
@@ -161,17 +280,6 @@ export class AuthController {
     }
   };
 
-  logout = async (req, res) => {
-    try {
-      await this.authService.logoutUser(req.cookies.session);
-      res.clearCookie("session");
-      res.json({ success: true });
-    } catch (error) {
-      console.error("Logout error:", error);
-      res.status(500).json({ error: error.message });
-    }
-  };
-
   checkAuth = async (req, res) => {
     try {
       const result = await this.authService.checkAuthStatus(
@@ -181,6 +289,50 @@ export class AuthController {
     } catch (error) {
       console.error("Auth check error:", error);
       res.status(401).json({ error: error.message });
+    }
+  };
+
+  handleFirebaseToken = async (req, res, next) => {
+    try {
+      const { idToken } = req.body;
+
+      // Validate request
+      validateRequest(req, {
+        idToken: { type: "string", required: true },
+      });
+
+      // Verify the Firebase ID token
+      const decodedToken = await auth.verifyIdToken(idToken);
+
+      // Get or create user in your database
+      let user = await this.authService.getUserByFirebaseId(decodedToken.uid);
+
+      if (!user) {
+        // Create new user if doesn't exist
+        user = await this.authService.createUser({
+          firebaseId: decodedToken.uid,
+          email: decodedToken.email,
+          name: decodedToken.name || decodedToken.email.split("@")[0],
+        });
+      }
+
+      // Generate your own JWT token
+      const token = this.authService.generateToken(user);
+
+      res.json({
+        success: true,
+        data: {
+          token,
+          user: {
+            id: user.id,
+            email: user.email,
+            name: user.name,
+            role: user.role,
+          },
+        },
+      });
+    } catch (error) {
+      next(error);
     }
   };
 }

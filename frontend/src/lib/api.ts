@@ -13,6 +13,20 @@ export interface AuthResponse {
   error?: string;
 }
 
+export interface UserResponse {
+  success: boolean;
+  data: {
+    user: {
+      id: string;
+      email: string;
+      name: string;
+      role: string;
+    };
+  };
+  message?: string;
+  error?: string;
+}
+
 export class ApiError extends Error {
   constructor(public status: number, message: string) {
     super(message);
@@ -76,6 +90,18 @@ export const api = {
         localStorage.setItem("auth_token", data.data.token);
       }
       return data;
+    },
+
+    getCurrentUser: async (): Promise<UserResponse> => {
+      const response = await fetchWithInterceptors(`${API_BASE_URL}/auth/me`, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+      });
+
+      return handleResponse<UserResponse>(response);
     },
 
     validateToken: async (token: string): Promise<AuthResponse> => {

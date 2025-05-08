@@ -1,6 +1,6 @@
 import express from "express";
 import { AuthController } from "../controllers/auth.controller.js";
-import { authenticate, authorize } from "../middleware/auth.middleware.js";
+import { authMiddleware, authorize } from "../middleware/auth.middleware.js";
 import { UserRole } from "../services/auth.service.js";
 import {
   arcjetProtection,
@@ -11,31 +11,51 @@ import { auth } from "../config/firebase.config.js";
 const router = express.Router();
 const authController = new AuthController();
 
+// router.use(arcjet.shield()); // General security
+// router.use(arcjet.detectBot()); // Bot detection
+// router.use(arcjet.slidingWindow({ limit: 100, windowMs: 60000 }));
+
+// Public routes
 router.post(
   "/register",
-  emailDomainValidation,
   arcjetProtection,
+  emailDomainValidation,
   authController.register
 );
+router.post(
+  "/login",
+  arcjetProtection,
+  emailDomainValidation,
+  authController.login
+);
+router.post("/forgot-password", authController.forgotPassword);
+router.post("/reset-password", authController.resetPassword);
+router.post("/token", arcjetProtection, authController.handleFirebaseToken);
 
-router.post("/login", arcjetProtection, authController.login);
+// Protected routes
+router.get("/me", authMiddleware, authController.getCurrentUser);
+router.put("/me", authMiddleware, authController.updateProfile);
+router.post("/logout", authMiddleware, authController.logout);
 
 router.post("/validate", arcjetProtection, authController.validateToken);
 
 router.put(
   "/role/:userId",
   arcjetProtection,
-  authenticate,
+  authMiddleware,
   authorize([UserRole.ADMIN]),
   authController.updateUserRole.bind(authController)
 );
 
 // Google Authentication Routes
-router.post("/google", authController.handleGoogleSignIn);
-router.post("/google/register", authController.registerGoogleUser);
+router.post("/google", arcjetProtection, authController.handleGoogleSignIn);
+router.post(
+  "/google/register",
+  arcjetProtection,
+  authController.registerGoogleUser
+);
 
 // Session Management Routes
-router.post("/logout", authController.logout);
-router.get("/check", authController.checkAuth);
+router.get("/check", arcjetProtection, authController.checkAuth);
 
 export default router;

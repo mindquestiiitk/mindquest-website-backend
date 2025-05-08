@@ -52,13 +52,35 @@ export const fetchWithInterceptors = async (
   options: RequestInit = {}
 ) => {
   try {
+    loadingState.increment();
+
+    // Get token from localStorage
+    const token = localStorage.getItem("auth_token");
+
+    // Add Authorization header if token exists
+    const headers = {
+      ...options.headers,
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    };
+
     const response = await fetch(url, {
       ...options,
+      headers,
       credentials: "include",
     });
+
+    // Handle 401 Unauthorized
+    if (response.status === 401) {
+      localStorage.removeItem("auth_token");
+      window.location.href = "/login";
+      throw new Error("Session expired. Please login again.");
+    }
+
     return response;
   } catch (error) {
     console.error("Fetch error:", error);
     throw error;
+  } finally {
+    loadingState.decrement();
   }
 };

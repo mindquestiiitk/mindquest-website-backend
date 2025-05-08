@@ -1,148 +1,403 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { useAuth } from "../contexts/AuthContext.tsx";
-import authService from "../services/auth.service.js";
+import { useNavigate, useLocation, Link } from "react-router-dom";
+import { useAuth } from "../contexts/AuthContext";
+import { login_hero } from "../assets";
+import NavbarLogin from "../components/Navbar/navbar_login";
+import { motion, AnimatePresence } from "framer-motion";
 
-interface PendingRegistration {
-  token: string;
-  userData: {
-    email: string;
-    name?: string;
-    picture?: string;
-  };
+interface PasswordValidation {
+  length: boolean;
+  uppercase: boolean;
+  lowercase: boolean;
+  number: boolean;
+  special: boolean;
+  match: boolean;
 }
 
-const Register = () => {
+export default function Register() {
+  const { register, loginWithGoogle } = useAuth();
   const navigate = useNavigate();
-  const { handleAuthCallback } = useAuth();
-  const [formData, setFormData] = useState({
-    username: "",
-    role: "student", // default role
+  const location = useLocation();
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [validation, setValidation] = useState<PasswordValidation>({
+    length: false,
+    uppercase: false,
+    lowercase: false,
+    number: false,
+    special: false,
+    match: false,
   });
-  const [pendingRegistration, setPendingRegistration] =
-    useState<PendingRegistration | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState("");
 
   useEffect(() => {
-    const stored = localStorage.getItem("pending_registration");
-    if (!stored) {
-      navigate("/login");
-      return;
-    }
+    document.body.classList.add("overflow-hidden");
+    return () => {
+      document.body.classList.remove("overflow-hidden");
+    };
+  }, []);
 
-    try {
-      const data = JSON.parse(stored);
-      setPendingRegistration(data);
-    } catch (error) {
-      console.error("Error parsing stored registration data:", error);
-      navigate("/login");
-    }
-  }, [navigate]);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-
-    if (!pendingRegistration) {
-      setError("No registration data found");
-      return;
-    }
-
-    try {
-      const response = await authService.registerUser({
-        ...formData,
-        email: pendingRegistration.userData.email,
-        name: pendingRegistration.userData.name,
-        picture: pendingRegistration.userData.picture,
+  useEffect(() => {
+    const validatePassword = () => {
+      setValidation({
+        length: password.length >= 8,
+        uppercase: /[A-Z]/.test(password),
+        lowercase: /[a-z]/.test(password),
+        number: /[0-9]/.test(password),
+        special: /[!@#$%^&*(),.?":{}|<>]/.test(password),
+        match: password === confirmPassword && password !== "",
       });
+    };
 
-      if (response.success) {
-        handleAuthCallback(pendingRegistration.token);
-        localStorage.removeItem("pending_registration");
-        navigate("/dashboard");
-      } else {
-        setError(response.message || "Registration failed");
-      }
+    validatePassword();
+  }, [password, confirmPassword]);
+
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setError("");
+    setIsSubmitting(true);
+
+    const formData = new FormData(e.currentTarget);
+    const name = formData.get("name") as string;
+    const email = formData.get("email") as string;
+
+    if (!Object.values(validation).every(Boolean)) {
+      setError("Please meet all password requirements");
+      setIsSubmitting(false);
+      return;
+    }
+
+    try {
+      await register(name, email, password);
+      const from = location.state?.from?.pathname || "/";
+      navigate(from, { replace: true });
     } catch (error: any) {
-      setError(error.message || "Registration failed");
+      setError(error.message || "Registration failed. Please try again.");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
-  const handleChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
-  ) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value,
-    });
+  const handleGoogleLogin = async () => {
+    try {
+      await loginWithGoogle();
+      const from = location.state?.from?.pathname || "/";
+      navigate(from, { replace: true });
+    } catch (error: any) {
+      setError(error.message || "Google login failed. Please try again.");
+    }
   };
 
-  if (!pendingRegistration) {
-    return null;
-  }
+  const PasswordRequirement = ({
+    met,
+    text,
+  }: {
+    met: boolean;
+    text: string;
+  }) => (
+    <motion.div
+      initial={{ opacity: 0, x: -20 }}
+      animate={{ opacity: 1, x: 0 }}
+      className="flex items-center space-x-2 text-sm"
+    >
+      <div
+        className={`w-4 h-4 rounded-full flex items-center justify-center ${
+          met ? "bg-green-500" : "bg-red-500"
+        }`}
+      >
+        {met && (
+          <motion.svg
+            initial={{ scale: 0 }}
+            animate={{ scale: 1 }}
+            className="w-3 h-3 text-white"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M5 13l4 4L19 7"
+            />
+          </motion.svg>
+        )}
+      </div>
+      <span className={met ? "text-green-600" : "text-red-600"}>{text}</span>
+    </motion.div>
+  );
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-8">
-        <div>
-          <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
-            Complete Your Registration
-          </h2>
-          <p className="mt-2 text-center text-sm text-gray-600">
-            Please provide additional information to complete your registration
-          </p>
-        </div>
-        <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
-          <div className="rounded-md shadow-sm -space-y-px">
-            <div>
-              <label htmlFor="username" className="sr-only">
-                Username
-              </label>
-              <input
-                id="username"
-                name="username"
-                type="text"
-                required
-                className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-t-md focus:outline-none focus:ring-primary-green focus:border-primary-green focus:z-10 sm:text-sm"
-                placeholder="Username"
-                value={formData.username}
-                onChange={handleChange}
-              />
-            </div>
-            <div>
-              <label htmlFor="role" className="sr-only">
-                Role
-              </label>
-              <select
-                id="role"
-                name="role"
-                required
-                className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-b-md focus:outline-none focus:ring-primary-green focus:border-primary-green focus:z-10 sm:text-sm"
-                value={formData.role}
-                onChange={handleChange}
-              >
-                <option value="student">Student</option>
-                <option value="teacher">Teacher</option>
-              </select>
-            </div>
-          </div>
-
-          {error && (
-            <div className="text-red-500 text-sm text-center">{error}</div>
-          )}
-
-          <div>
-            <button
-              type="submit"
-              className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-primary-green hover:bg-primary-green-dark focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-green"
+    <div className="min-h-screen flex flex-col bg-[#9FE196]">
+      <NavbarLogin />
+      <div className="flex flex-grow">
+        {/* Left Section */}
+        <motion.div
+          initial={{ opacity: 0, x: -50 }}
+          animate={{ opacity: 1, x: 0 }}
+          className="basis-2/5 bg-[#9FE196] flex flex-col justify-center items-center p-8"
+        >
+          <header className="text-center text-[#006833] font-acme text-3xl lg:text-4xl xl:text-5xl pt-12">
+            <motion.h1
+              initial={{ y: 20, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              transition={{ delay: 0.2 }}
             >
-              Complete Registration
-            </button>
+              Join the Quest
+            </motion.h1>
+            <motion.h1
+              initial={{ y: 20, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              transition={{ delay: 0.4 }}
+            >
+              Start Your Journey
+            </motion.h1>
+          </header>
+          <motion.div
+            initial={{ scale: 0.8, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ delay: 0.6 }}
+            className="mt-8"
+          >
+            <img
+              src={login_hero}
+              alt="Mind Quest Illustration"
+              className="w-full max-w-2xl"
+              style={{ transform: "translateX(22.5%) translateY(-16%)" }}
+            />
+          </motion.div>
+        </motion.div>
+
+        {/* Right Section */}
+        <motion.div
+          initial={{ opacity: 0, x: 50 }}
+          animate={{ opacity: 1, x: 0 }}
+          className="basis-3/5 bg-white flex justify-center items-center p-8 mt-[-20px]"
+        >
+          <div className="w-full max-w-md space-y-8">
+            <div>
+              <h2 className="text-center text-3xl font-bold text-gray-900">
+                Create Account
+              </h2>
+              <p className="mt-2 text-center text-sm text-gray-600">
+                Begin your learning journey today
+              </p>
+            </div>
+
+            <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
+              <div className="space-y-4">
+                <div>
+                  <label
+                    htmlFor="name"
+                    className="block text-sm font-medium text-gray-700"
+                  >
+                    Full Name
+                  </label>
+                  <input
+                    id="name"
+                    name="name"
+                    type="text"
+                    required
+                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-[#006833] focus:border-[#006833] transition-colors"
+                    placeholder="Enter your full name"
+                  />
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="email"
+                    className="block text-sm font-medium text-gray-700"
+                  >
+                    Email
+                  </label>
+                  <input
+                    id="email"
+                    name="email"
+                    type="email"
+                    required
+                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-[#006833] focus:border-[#006833] transition-colors"
+                    placeholder="Enter your email"
+                  />
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="password"
+                    className="block text-sm font-medium text-gray-700"
+                  >
+                    Password
+                  </label>
+                  <div className="relative">
+                    <input
+                      id="password"
+                      name="password"
+                      type={showPassword ? "text" : "password"}
+                      required
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className={`mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-[#006833] focus:border-[#006833] transition-colors ${
+                        password
+                          ? validation.length &&
+                            validation.uppercase &&
+                            validation.lowercase &&
+                            validation.number &&
+                            validation.special
+                            ? "border-green-500"
+                            : "border-red-500"
+                          : "border-gray-300"
+                      }`}
+                      placeholder="Create a password"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute inset-y-0 right-0 pr-3 flex items-center"
+                    >
+                      {showPassword ? "👁️" : "👁️‍🗨️"}
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="confirmPassword"
+                    className="block text-sm font-medium text-gray-700"
+                  >
+                    Confirm Password
+                  </label>
+                  <input
+                    id="confirmPassword"
+                    name="confirmPassword"
+                    type={showPassword ? "text" : "password"}
+                    required
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    className={`mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-[#006833] focus:border-[#006833] transition-colors ${
+                      confirmPassword
+                        ? validation.match
+                          ? "border-green-500"
+                          : "border-red-500"
+                        : "border-gray-300"
+                    }`}
+                    placeholder="Confirm your password"
+                  />
+                </div>
+
+                <AnimatePresence>
+                  {password && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: "auto", opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      className="space-y-2 mt-4 p-4 bg-gray-50 rounded-md"
+                    >
+                      <h4 className="text-sm font-medium text-gray-700">
+                        Password Requirements:
+                      </h4>
+                      <div className="space-y-2">
+                        <PasswordRequirement
+                          met={validation.length}
+                          text="At least 8 characters"
+                        />
+                        <PasswordRequirement
+                          met={validation.uppercase}
+                          text="One uppercase letter"
+                        />
+                        <PasswordRequirement
+                          met={validation.lowercase}
+                          text="One lowercase letter"
+                        />
+                        <PasswordRequirement
+                          met={validation.number}
+                          text="One number"
+                        />
+                        <PasswordRequirement
+                          met={validation.special}
+                          text="One special character"
+                        />
+                        <PasswordRequirement
+                          met={validation.match}
+                          text="Passwords match"
+                        />
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+
+              {error && (
+                <motion.div
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="text-red-500 text-sm text-center"
+                >
+                  {error}
+                </motion.div>
+              )}
+
+              <div>
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className={`w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-[#006833] hover:bg-[#005229] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#006833] transition-colors ${
+                    isSubmitting ? "opacity-50 cursor-not-allowed" : ""
+                  }`}
+                >
+                  {isSubmitting ? (
+                    <motion.div
+                      animate={{ rotate: 360 }}
+                      transition={{
+                        duration: 1,
+                        repeat: Infinity,
+                        ease: "linear",
+                      }}
+                      className="w-5 h-5 border-2 border-white border-t-transparent rounded-full"
+                    />
+                  ) : (
+                    "Create Account"
+                  )}
+                </button>
+              </div>
+
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-gray-300"></div>
+                </div>
+                <div className="relative flex justify-center text-sm">
+                  <span className="px-2 bg-white text-gray-500">
+                    Or continue with
+                  </span>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleGoogleLogin}
+                className="w-full flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#006833] transition-colors"
+              >
+                <img
+                  className="h-5 w-5 mr-2"
+                  src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg"
+                  alt="Google logo"
+                />
+                Google
+              </button>
+
+              <p className="mt-2 text-center text-sm text-gray-600">
+                Already have an account?{" "}
+                <Link
+                  to="/login"
+                  className="font-medium text-[#006833] hover:text-[#005229] transition-colors"
+                >
+                  Sign in
+                </Link>
+              </p>
+            </form>
           </div>
-        </form>
+        </motion.div>
       </div>
     </div>
   );
-};
-
-export default Register;
+}
