@@ -2,8 +2,161 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        request.auth.token.role == 'admin';
+    }
+
+    function isCounselor() {
+      return isAuthenticated() &&
+        request.auth.token.role == 'counselor';
+    }
+
+    function isUser() {
+      return isAuthenticated() &&
+        request.auth.token.role == 'user';
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() &&
+        request.auth.uid == userId;
+    }
+
+    function isValidUser() {
+      return request.resource.data.keys().hasAll(['email', 'role', 'createdAt', 'updatedAt']) &&
+        request.resource.data.role in ['user', 'counselor', 'admin'];
+    }
+
+    function isValidEmail(email) {
+      return email.matches('^[^@]+@[^@]+\\.[^@]+$');
+    }
+
+    function isValidPassword(password) {
+      // Password must be at least 6 characters
+      return password.size() >= 6;
+    }
+
+    function isValidName(name) {
+      // Name must be between 2 and 50 characters
+      return name.size() >= 2 && name.size() <= 50;
+    }
+
+    // Default deny all
     match /{document=**} {
       allow read, write: if false;
+    }
+
+    // Users collection
+    match /users/{userId} {
+      // Users can read their own profile
+      allow read: if isOwner(userId) || isAdmin();
+
+      // Only admins can create users (user creation is handled by backend)
+      // With additional validation for email, name, and role
+      allow create: if (isAdmin() && isValidUser() &&
+                       isValidEmail(request.resource.data.email) &&
+                       isValidName(request.resource.data.name)) ||
+                      // Allow backend service to create users
+                      (request.auth.token.firebase.sign_in_provider == 'custom');
+
+      // Users can update their own profile, admins can update any profile
+      // With validation to prevent role escalation
+      allow update: if (isOwner(userId) &&
+                        request.resource.data.role == resource.data.role &&
+                        (!request.resource.data.keys().hasAny(['email']) ||
+                          isValidEmail(request.resource.data.email)) &&
+                        (!request.resource.data.keys().hasAny(['name']) ||
+                          isValidName(request.resource.data.name))) ||
+                       isAdmin();
+
+      // Only admins can delete users
+      allow delete: if isAdmin();
+    }
+
+    // Counselors collection
+    match /counselors/{counselorId} {
+      // Users can read counselor profiles
+      allow read: if isAuthenticated();
+
+      // Only admins can create counselor profiles
+      allow create: if isAdmin();
+
+      // Counselors can update their own profile, admins can update any profile
+      allow update: if (isAuthenticated() &&
+                        resource.data.userId == request.auth.uid) ||
+                       isAdmin();
+
+      // Only admins can delete counselor profiles
+      allow delete: if isAdmin();
+    }
+
+    // Messages collection
+    match /messages/{messageId} {
+      // Users can read messages they sent or received
+      allow read: if isAuthenticated() &&
+                    (resource.data.senderId == request.auth.uid ||
+                     resource.data.receiverId == request.auth.uid);
+
+      // Users can create messages with validation
+      allow create: if isAuthenticated() &&
+                      request.resource.data.senderId == request.auth.uid &&
+                      request.resource.data.timestamp is timestamp &&
+                      request.resource.data.keys().hasAll(['senderId', 'receiverId', 'content', 'timestamp']) &&
+                      request.resource.data.content.size() > 0 &&
+                      request.resource.data.content.size() <= 5000;
+
+      // Users can update messages they sent (e.g., to mark as deleted or read)
+      allow update: if isAuthenticated() &&
+                      resource.data.senderId == request.auth.uid &&
+                      // Prevent changing critical fields
+                      request.resource.data.senderId == resource.data.senderId &&
+                      request.resource.data.receiverId == resource.data.receiverId &&
+                      request.resource.data.timestamp == resource.data.timestamp;
+
+      // Users can delete their own messages
+      allow delete: if isAuthenticated() &&
+                      resource.data.senderId == request.auth.uid;
+    }
+
+    // Events collection
+    match /events/{eventId} {
+      // All authenticated users can read events
+      allow read: if isAuthenticated();
+
+      // Only admins can create, update, or delete events
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Settings collection
+    match /settings/{settingId} {
+      // All authenticated users can read settings
+      allow read: if isAuthenticated();
+
+
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Logs collection
+    match /logs/{logId} {
+      // Only admins can read, create, update, or delete logs
+      allow read, write: if isAdmin();
+    }
+
+    // Analytics collection
+    match /analytics/{analyticsId} {
+      // Only admins can read, create, update, or delete analytics
+      allow read, write: if isAdmin();
+    }
+
+    // Admins collection
+    match /admins/{adminId} {
+      // Only admins can read, create, update, or delete admin records
+      allow read, write: if isAdmin();
     }
   }
 }

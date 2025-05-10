@@ -76,10 +76,65 @@ class AuthService {
 
   private handleError(error: unknown): never {
     if (axios.isAxiosError(error)) {
-      const message = error.response?.data?.message || error.message;
+      // Extract the error message from the response
+      // Check for our custom error format first
+      if (error.response?.data?.error) {
+        // If error is an object with a message property
+        if (
+          typeof error.response.data.error === "object" &&
+          error.response.data.error.message
+        ) {
+          throw new Error(error.response.data.error.message);
+        }
+        // If error is a string
+        if (typeof error.response.data.error === "string") {
+          throw new Error(error.response.data.error);
+        }
+      }
+
+      // Fallback to other possible error formats
+      const message =
+        error.response?.data?.message ||
+        error.response?.data?.error?.message ||
+        error.message;
+
       throw new Error(message);
+    } else if (error instanceof Error) {
+      // Handle Firebase Auth errors
+      const errorCode = (error as any).code;
+      if (errorCode && errorCode.startsWith("auth/")) {
+        // Map Firebase Auth error codes to user-friendly messages
+        const errorMessages: Record<string, string> = {
+          "auth/email-already-in-use":
+            "This email address is already in use. Please try a different email or sign in.",
+          "auth/invalid-email":
+            "The email address is not valid. Please check and try again.",
+          "auth/user-disabled":
+            "This account has been disabled. Please contact support for assistance.",
+          "auth/user-not-found":
+            "No account found with this email address. Please check your email or register.",
+          "auth/wrong-password":
+            "Incorrect password. Please try again or reset your password.",
+          "auth/invalid-credential":
+            "Invalid login credentials. Please check your email and password.",
+          "auth/weak-password":
+            "Password is too weak. Please use a stronger password with at least 6 characters.",
+          "auth/too-many-requests":
+            "Too many unsuccessful login attempts. Please try again later or reset your password.",
+          "auth/network-request-failed":
+            "Network error. Please check your internet connection and try again.",
+          "auth/popup-closed-by-user":
+            "Sign-in popup was closed before completing the sign-in process. Please try again.",
+        };
+
+        throw new Error(errorMessages[errorCode] || error.message);
+      }
+
+      throw error;
     }
-    throw error;
+
+    // For unknown errors
+    throw new Error("An unexpected error occurred. Please try again.");
   }
 
   private async getBackendToken(firebaseUser: FirebaseUser): Promise<string> {

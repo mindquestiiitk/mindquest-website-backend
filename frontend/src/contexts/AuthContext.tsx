@@ -50,7 +50,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       const user = await authService.login({ email, password });
       setUser(user);
     } catch (error) {
-      setError(error instanceof Error ? error.message : "Login failed");
+      // Extract the error message
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : "Login failed. Please try again.";
+
+      setError(errorMessage);
       throw error;
     }
   };
@@ -61,7 +67,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       const user = await authService.register({ name, email, password });
       setUser(user);
     } catch (error) {
-      setError(error instanceof Error ? error.message : "Registration failed");
+      // Extract the error message
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : "Registration failed. Please try again.";
+
+      setError(errorMessage);
       throw error;
     }
   };

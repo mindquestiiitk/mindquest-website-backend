@@ -94,18 +94,47 @@ export function Events() {
     fetchEvents();
   }, []);
 
+  // Helper function to parse date in DD/MM/YYYY format
+  const parseDate = (dateString: string): Date => {
+    // Check if the date is in DD/MM/YYYY format
+    const parts = dateString.split("/");
+    if (parts.length === 3) {
+      // Parse as DD/MM/YYYY
+      const day = parseInt(parts[0], 10);
+      const month = parseInt(parts[1], 10) - 1; // Months are 0-indexed in JS
+      const year = parseInt(parts[2], 10);
+      return new Date(year, month, day);
+    }
+    // Fallback to default parsing
+    return new Date(dateString);
+  };
+
   const findUpcomingEvents = (events: Event[]) => {
     const currentDate = new Date();
+    console.log("Current date:", currentDate);
+
     return events.filter((event) => {
-      const eventDate = new Date(event.date);
+      const eventDate = parseDate(event.date);
+      console.log(
+        `Event: ${event.title}, Date string: ${
+          event.date
+        }, Parsed date: ${eventDate}, Is upcoming: ${eventDate > currentDate}`
+      );
       return eventDate > currentDate;
     });
   };
 
   const findPastEvents = (events: Event[]) => {
     const currentDate = new Date();
+    console.log("Current date:", currentDate);
+
     return events.filter((event) => {
-      const eventDate = new Date(event.date);
+      const eventDate = parseDate(event.date);
+      console.log(
+        `Event: ${event.title}, Date string: ${
+          event.date
+        }, Parsed date: ${eventDate}, Is past: ${eventDate < currentDate}`
+      );
       return eventDate < currentDate;
     });
   };

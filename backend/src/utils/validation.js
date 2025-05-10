@@ -11,7 +11,14 @@ export const validateRequest = (req, schema) => {
       rules.required &&
       (value === undefined || value === null || value === "")
     ) {
-      errors.push(`${field} is required`);
+      // Use more user-friendly error messages
+      const fieldName =
+        field.charAt(0).toUpperCase() +
+        field
+          .slice(1)
+          .replace(/([A-Z])/g, " $1")
+          .trim();
+      errors.push(`${fieldName} is required. Please provide a valid ${field}.`);
       continue;
     }
 

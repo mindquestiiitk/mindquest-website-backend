@@ -1,6 +1,18 @@
 export const errorHandler = (err, req, res, next) => {
   console.error(err.stack);
 
+  // Handle validation errors
+  if (err.statusCode === 400 && err.message.includes("required")) {
+    return res.status(400).json({
+      success: false,
+      error: {
+        message: err.message,
+        code: "validation_error",
+        status: "error",
+      },
+    });
+  }
+
   // Handle Arcjet validation errors
   if (err.name === "ArcjetError") {
     return res.status(400).json({
@@ -104,12 +116,41 @@ export const errorHandler = (err, req, res, next) => {
     });
   }
 
+  // Handle Firebase Auth errors
+  if (err.code && err.code.startsWith("auth/")) {
+    return res.status(err.statusCode || 400).json({
+      success: false,
+      error: {
+        code: err.code,
+        message: err.message,
+        status: err.status || "error",
+      },
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  // Handle Firestore errors
+  if (err.code && err.code.startsWith("firestore/")) {
+    return res.status(err.statusCode || 400).json({
+      success: false,
+      error: {
+        code: err.code,
+        message: err.message,
+        status: err.status || "error",
+      },
+      timestamp: new Date().toISOString(),
+    });
+  }
+
   // Default error response
   const statusCode = err.statusCode || 500;
   res.status(statusCode).json({
     success: false,
-    error: err.message || "Something went wrong!",
-    status: err.status || "error",
+    error: {
+      message: err.message || "Something went wrong!",
+      status: err.status || "error",
+      code: err.code || "unknown_error",
+    },
     timestamp: new Date().toISOString(),
   });
 };

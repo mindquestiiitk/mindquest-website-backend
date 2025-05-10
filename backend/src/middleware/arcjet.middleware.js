@@ -12,8 +12,8 @@ config({ path: envPath });
 // Combined protection middleware
 export const arcjetProtection = async (req, res, next) => {
   try {
-    // Skip protection for health check endpoint
-    if (req.path === "/") {
+    // Skip protection for health check endpoint and in development mode
+    if (req.path === "/" || process.env.NODE_ENV === "development") {
       return next();
     }
 
@@ -192,6 +192,13 @@ export const emailDomainValidation = async (req, res, next) => {
       });
     }
 
+    // Check if email domain is allowed (simple validation for development)
+    if (process.env.NODE_ENV !== "production") {
+      // In development, allow any email domain
+      console.log("Development mode: Skipping strict email domain validation");
+      return next();
+    }
+
     const decision = await arcjet.protect({
       ip: req.ip,
       method: req.method,
@@ -204,7 +211,11 @@ export const emailDomainValidation = async (req, res, next) => {
       },
     });
 
-    if (decision.isDenied()) {
+    // Check if decision has isDenied method or use the allowed property
+    if (
+      (typeof decision.isDenied === "function" && decision.isDenied()) ||
+      (decision.isDenied === undefined && !decision.allowed)
+    ) {
       return res.status(403).json({
         success: false,
         error:
@@ -215,6 +226,11 @@ export const emailDomainValidation = async (req, res, next) => {
     next();
   } catch (error) {
     console.error("Arcjet email validation error:", error);
-    next();
+    // In development, continue despite errors
+    if (process.env.NODE_ENV === "development") {
+      next();
+    } else {
+      next(error);
+    }
   }
 };

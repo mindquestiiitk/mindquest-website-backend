@@ -10,31 +10,69 @@ export class AuthController {
 
   register = async (req, res, next) => {
     try {
-      const { email, password, name } = req.body;
+      const { email, password, name, idToken } = req.body;
 
-      // Validate request
-      validateRequest(req, {
-        email: { type: "string", required: true },
-        password: { type: "string", required: true, min: 6 },
-        name: { type: "string", required: true },
-      });
+      // Check if registration is using Firebase token or direct credentials
+      if (idToken) {
+        // Firebase token-based registration
+        validateRequest(req, {
+          email: { type: "string", required: true },
+          name: { type: "string", required: true },
+          idToken: { type: "string", required: true },
+        });
 
-      const user = await this.authService.register({ email, password, name });
+        // Verify the Firebase ID token
+        const decodedToken = await auth.verifyIdToken(idToken);
 
-      // Set session
-      req.session.userId = user.id;
+        // Create user in your database
+        const user = await this.authService.createUser({
+          firebaseId: decodedToken.uid,
+          email: email || decodedToken.email,
+          name: name || decodedToken.name || decodedToken.email.split("@")[0],
+        });
 
-      res.status(201).json({
-        success: true,
-        data: {
-          user: {
-            id: user.id,
-            email: user.email,
-            name: user.name,
-            role: user.role,
+        // Generate JWT token
+        const token = this.authService.generateToken(user);
+
+        return res.status(201).json({
+          success: true,
+          data: {
+            user: {
+              id: user.id,
+              email: user.email,
+              name: user.name,
+              role: user.role,
+            },
+            token,
           },
-        },
-      });
+        });
+      } else {
+        // Direct credentials registration
+        validateRequest(req, {
+          email: { type: "string", required: true },
+          password: { type: "string", required: true, min: 6 },
+          name: { type: "string", required: true },
+        });
+
+        const user = await this.authService.register({ email, password, name });
+
+        // Set session if using sessions
+        if (req.session) {
+          req.session.userId = user.id;
+        }
+
+        res.status(201).json({
+          success: true,
+          data: {
+            user: {
+              id: user.id,
+              email: user.email,
+              name: user.name,
+              role: user.role,
+            },
+          },
+        });
+      }
     } catch (error) {
       next(error);
     }

@@ -1,5 +1,9 @@
 import { auth, db } from "../config/firebase.config.js";
 import { createError } from "../utils/error.js";
+import {
+  handleFirebaseError,
+  createErrorResponse,
+} from "../utils/firebase-error-handler.js";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
@@ -83,7 +87,9 @@ export class AuthService {
           );
         }
       }
-      throw new Error(error.message);
+
+      // Handle Firebase errors with user-friendly messages
+      throw handleFirebaseError(error);
     }
   }
 
@@ -132,7 +138,8 @@ export class AuthService {
       }
       console.error("Error logging in user:", error);
 
-      throw new Error("Invalid email or password");
+      // Handle Firebase errors with user-friendly messages
+      throw handleFirebaseError(error, 401);
     }
   }
 
@@ -408,7 +415,10 @@ export class AuthService {
         .where("email", "==", email)
         .get();
       if (!existingUser.empty) {
-        throw createError(400, "User already exists");
+        throw createError(
+          409,
+          "This email address is already in use. Please try a different email or sign in."
+        );
       }
 
       // Hash password
@@ -433,7 +443,13 @@ export class AuthService {
       const { password: _, ...userWithoutPassword } = user;
       return userWithoutPassword;
     } catch (error) {
-      throw error;
+      // If it's already a handled error (AppError), throw it directly
+      if (error.isOperational) {
+        throw error;
+      }
+
+      // Otherwise, handle Firebase errors with user-friendly messages
+      throw handleFirebaseError(error);
     }
   }
 
@@ -444,7 +460,10 @@ export class AuthService {
         .where("email", "==", email)
         .get();
       if (userSnapshot.empty) {
-        throw createError(401, "Invalid credentials");
+        throw createError(
+          401,
+          "No account found with this email address. Please check your email or register."
+        );
       }
 
       const userDoc = userSnapshot.docs[0];
@@ -453,7 +472,10 @@ export class AuthService {
       // Verify password
       const isValidPassword = await bcrypt.compare(password, user.password);
       if (!isValidPassword) {
-        throw createError(401, "Invalid credentials");
+        throw createError(
+          401,
+          "Incorrect password. Please try again or reset your password."
+        );
       }
 
       // Generate JWT token
@@ -467,7 +489,13 @@ export class AuthService {
       const { password: _, ...userWithoutPassword } = user;
       return { user: userWithoutPassword, token };
     } catch (error) {
-      throw error;
+      // If it's already a handled error (AppError), throw it directly
+      if (error.isOperational) {
+        throw error;
+      }
+
+      // Otherwise, handle Firebase errors with user-friendly messages
+      throw handleFirebaseError(error, 401);
     }
   }
 

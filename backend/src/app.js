@@ -7,6 +7,7 @@ import { Server } from "socket.io";
 import authRoutes from "./routes/auth.routes.js";
 import merchRoutes from "./routes/merch.routes.js";
 import eventsRoutes from "./routes/events.routes.js";
+import teamsRoutes from "./routes/teams.routes.js";
 import "./config/firebase.config.js";
 import { arcjetProtection } from "./middleware/arcjet.middleware.js";
 import { errorHandler } from "./middleware/error.middleware.js";
@@ -45,12 +46,13 @@ app.use(
 app.use(arcjetProtection);
 
 app.use(morgan("dev"));
-app.use(express.json());
+app.use(express.json({ limit: "10mb" })); // Increase JSON payload limit for team data
 
 // Routes
 app.use("/auth", authRoutes);
 app.use("/merch", merchRoutes);
 app.use("/events", eventsRoutes);
+app.use("/teams", teamsRoutes);
 
 // Health check endpoint with minimal protection
 app.get("/", (req, res) => {
@@ -70,7 +72,7 @@ app.get("/", (req, res) => {
 // Error handling middleware
 app.use(errorHandler);
 
-const PORT = process.env.PORT || 3002;
+const PORT = process.env.PORT || 3000;
 httpServer.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
   console.log(`Environment: ${process.env.NODE_ENV}`);

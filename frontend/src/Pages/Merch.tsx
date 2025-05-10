@@ -1,6 +1,5 @@
 import React, { useEffect, useState, lazy, Suspense } from "react";
 import { Icon } from "@iconify/react/dist/iconify.js";
-import { api } from "../lib/api";
 
 const SaleTicker = lazy(() => import("../components/SaleTicker"));
 const MerchCard = lazy(() => import("./Merch/MerchCard"));

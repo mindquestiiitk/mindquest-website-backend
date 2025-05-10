@@ -15,11 +15,17 @@ const isDevelopment = true;
 
 // Create a mock Arcjet instance for development
 const createMockArcjet = () => ({
-  protect: async (req) => ({
-    allowed: true,
-    type: "development",
-    reason: "Development mode - protection disabled",
-  }),
+  protect: async (req) => {
+    const result = {
+      allowed: true,
+      type: "development",
+      reason: "Development mode - protection disabled",
+      isDenied: function () {
+        return !this.allowed;
+      },
+    };
+    return result;
+  },
 });
 
 // Log configuration for debugging

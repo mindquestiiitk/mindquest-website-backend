@@ -5,7 +5,7 @@
   "type": "module",
   "main": "src/app.js",
   "scripts": {
-    "start": "cls &&node src/app.js",
+    "start": "cls && node src/app.js",
     "dev": "cls && nodemon src/app.js",
     "test": "cls && jest",
     "test:watch": "cls && jest --watch",
