@@ -15,6 +15,12 @@ export default function Login() {
 
   useEffect(() => {
     document.body.classList.add("overflow-hidden");
+
+    // Check Firebase configuration in development mode
+    if (import.meta.env.NODE_ENV) {
+      checkFirebaseConfig();
+    }
+
     return () => {
       document.body.classList.remove("overflow-hidden");
     };
@@ -29,12 +35,56 @@ export default function Login() {
     const email = formData.get("email") as string;
     const password = formData.get("password") as string;
 
+    // Basic validation
+    if (!email || !password) {
+      setError("Please enter both email and password");
+      setIsSubmitting(false);
+      return;
+    }
+
     try {
+      console.log("Attempting to login with email:", email);
       await login(email, password);
+      console.log("Login successful, navigating to home page");
       const from = location.state?.from?.pathname || "/";
       navigate(from, { replace: true });
     } catch (error: any) {
-      setError(error.message || "Invalid email or password");
+      console.error("Login error in component:", error);
+
+      // Provide a more user-friendly error message
+      if (error.message && error.message.includes("auth/invalid-credential")) {
+        setError(
+          "Invalid login credentials. Please check your email and password."
+        );
+      } else if (
+        error.message &&
+        error.message.includes("auth/user-not-found")
+      ) {
+        setError(
+          "No account found with this email. Please check your email or register."
+        );
+      } else if (
+        error.message &&
+        error.message.includes("auth/wrong-password")
+      ) {
+        setError("Incorrect password. Please try again.");
+      } else if (
+        error.message &&
+        error.message.includes("auth/too-many-requests")
+      ) {
+        setError(
+          "Too many unsuccessful login attempts. Please try again later or reset your password."
+        );
+      } else if (
+        error.message &&
+        error.message.includes("auth/network-request-failed")
+      ) {
+        setError(
+          "Network error. Please check your internet connection and try again."
+        );
+      } else {
+        setError(error.message || "Invalid email or password");
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -43,10 +93,36 @@ export default function Login() {
   const handleGoogleLogin = async () => {
     try {
       await loginWithGoogle();
-      const from = location.state?.from?.pathname || "/";
-      navigate(from, { replace: true });
+      // const from = location.state?.from?.pathname || "/";
+      // navigate(from, { replace: true });
     } catch (error: any) {
+      console.error("Google login error:", error);
       setError(error.message || "Google login failed. Please try again.");
+    }
+  };
+
+  // Function to check Firebase configuration
+  const checkFirebaseConfig = () => {
+    try {
+      // Check if Firebase config values are set
+      const apiKey = import.meta.env.VITE_FIREBASE_API_KEY;
+      const authDomain = import.meta.env.VITE_FIREBASE_AUTH_DOMAIN;
+      const projectId = import.meta.env.VITE_FIREBASE_PROJECT_ID;
+
+      if (!apiKey || !authDomain || !projectId) {
+        console.error("Firebase configuration is incomplete:", {
+          apiKey: apiKey ? "Set" : "Missing",
+          authDomain: authDomain ? "Set" : "Missing",
+          projectId: projectId ? "Set" : "Missing",
+        });
+        setError(
+          "Firebase configuration is incomplete. Please contact support."
+        );
+      } else {
+        console.log("Firebase configuration is complete");
+      }
+    } catch (error) {
+      console.error("Error checking Firebase configuration:", error);
     }
   };
 
@@ -135,6 +211,7 @@ export default function Login() {
                   </label>
                   <div className="relative">
                     <input
+                      maxLength={40}
                       id="password"
                       name="password"
                       type={showPassword ? "text" : "password"}
@@ -234,6 +311,19 @@ export default function Login() {
                   Sign up
                 </Link>
               </p>
+
+              {/* Hidden in production, only for debugging */}
+              {import.meta.env.NODE_ENV && (
+                <div className="mt-4">
+                  <button
+                    type="button"
+                    onClick={checkFirebaseConfig}
+                    className="w-full text-xs text-gray-500 hover:text-gray-700"
+                  >
+                    Check Firebase Configuration
+                  </button>
+                </div>
+              )}
             </form>
           </div>
         </motion.div>

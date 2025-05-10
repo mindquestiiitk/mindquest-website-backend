@@ -339,28 +339,37 @@ export class AuthController {
         idToken: { type: "string", required: true },
       });
 
+      console.log("Verifying Firebase ID token...");
       // Verify the Firebase ID token
       const decodedToken = await auth.verifyIdToken(idToken);
+      console.log("Firebase ID token verified for user:", decodedToken.uid);
 
       // Get or create user in your database
       let user = await this.authService.getUserByFirebaseId(decodedToken.uid);
 
       if (!user) {
+        console.log("User not found, creating new user...");
         // Create new user if doesn't exist
         user = await this.authService.createUser({
           firebaseId: decodedToken.uid,
           email: decodedToken.email,
           name: decodedToken.name || decodedToken.email.split("@")[0],
         });
+        console.log("New user created:", user.id);
+      } else {
+        console.log("Existing user found:", user.id);
       }
 
       // Generate your own JWT token
       const token = this.authService.generateToken(user);
+      console.log("JWT token generated successfully");
 
+      // Return token in both formats for compatibility
       res.json({
         success: true,
+        token, // Direct token property for older clients
         data: {
-          token,
+          token, // Nested token property for newer clients
           user: {
             id: user.id,
             email: user.email,
@@ -370,6 +379,7 @@ export class AuthController {
         },
       });
     } catch (error) {
+      console.error("Error handling Firebase token:", error);
       next(error);
     }
   };

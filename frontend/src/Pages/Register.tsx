@@ -231,6 +231,7 @@ export default function Register() {
                   </label>
                   <div className="relative">
                     <input
+                      maxLength={40}
                       id="password"
                       name="password"
                       type={showPassword ? "text" : "password"}

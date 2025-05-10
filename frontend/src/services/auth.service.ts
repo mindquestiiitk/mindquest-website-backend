@@ -46,6 +46,37 @@ class AuthService {
     if (this.token) {
       this.setupAxiosInterceptors();
     }
+
+    // Check if Firebase is properly initialized
+    this.checkFirebaseConfig();
+  }
+
+  private checkFirebaseConfig() {
+    try {
+      // Check if Firebase auth is initialized
+      if (!auth) {
+        console.error("Firebase auth is not initialized");
+      } else {
+        console.log("Firebase auth is properly initialized");
+      }
+
+      // Check if Firebase config values are set
+      const apiKey = import.meta.env.VITE_FIREBASE_API_KEY;
+      const authDomain = import.meta.env.VITE_FIREBASE_AUTH_DOMAIN;
+      const projectId = import.meta.env.VITE_FIREBASE_PROJECT_ID;
+
+      if (!apiKey || !authDomain || !projectId) {
+        console.error("Firebase configuration is incomplete:", {
+          apiKey: apiKey ? "Set" : "Missing",
+          authDomain: authDomain ? "Set" : "Missing",
+          projectId: projectId ? "Set" : "Missing",
+        });
+      } else {
+        console.log("Firebase configuration is complete");
+      }
+    } catch (error) {
+      console.error("Error checking Firebase configuration:", error);
+    }
   }
 
   public setupAxiosInterceptors() {
@@ -138,32 +169,81 @@ class AuthService {
   }
 
   private async getBackendToken(firebaseUser: FirebaseUser): Promise<string> {
-    const idToken = await firebaseUser.getIdToken();
-    const response = await axios.post<{ token: string }>(
-      `${API_URL}/auth/token`,
-      { idToken }
-    );
-    return response.data.token;
+    try {
+      console.log("Getting Firebase ID token...");
+      const idToken = await firebaseUser.getIdToken();
+      console.log(
+        "Firebase ID token obtained, exchanging for backend token..."
+      );
+
+      const response = await axios.post<{
+        token: string;
+        data?: { token: string };
+      }>(`${API_URL}/auth/token`, { idToken });
+
+      // Handle different response formats
+      const token =
+        response.data.token || (response.data.data && response.data.data.token);
+
+      if (!token) {
+        console.error("No token received from backend:", response.data);
+        throw new Error("No token received from backend");
+      }
+
+      console.log("Backend token received successfully");
+      return token;
+    } catch (error) {
+      console.error("Error getting backend token:", error);
+      if (axios.isAxiosError(error)) {
+        console.error("Response data:", error.response?.data);
+        console.error("Response status:", error.response?.status);
+      }
+      throw error;
+    }
   }
 
   async login(credentials: LoginCredentials): Promise<User> {
     try {
+      console.log("Attempting to sign in with email:", credentials.email);
+
+      // Sign in with Firebase
       const { user: firebaseUser } = await signInWithEmailAndPassword(
         auth,
         credentials.email,
         credentials.password
       );
 
+      console.log("Firebase authentication successful, getting backend token");
+
+      // Get token from backend
       const token = await this.getBackendToken(firebaseUser);
       this.token = token;
       localStorage.setItem("token", token);
       this.setupAxiosInterceptors();
 
+      console.log("Token received and stored, fetching user profile");
+
+      // Get user profile
       const response = await axios.get<{ data: { user: User } }>(
         `${API_URL}/auth/me`
       );
+
+      console.log("Login successful, user profile retrieved");
       return response.data.data.user;
     } catch (error) {
+      console.error("Login error:", error);
+
+      // Log detailed error information
+      if (typeof error === "object" && error !== null) {
+        if ("code" in error) {
+          console.error("Firebase error code:", (error as any).code);
+        }
+
+        if ("message" in error) {
+          console.error("Error message:", (error as any).message);
+        }
+      }
+
       throw this.handleError(error);
     }
   }

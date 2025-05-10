@@ -18,11 +18,25 @@ export const authMiddleware = async (req, res, next) => {
 
     const token = authHeader.split(" ")[1];
 
-    // Verify token
-    const decoded = jwt.verify(
-      token,
-      process.env.JWT_SECRET || "your-secret-key"
+    // Log JWT secret status for debugging
+    console.log(
+      "JWT_SECRET status:",
+      process.env.JWT_SECRET ? "Set" : "Not set"
     );
+
+    // Verify token
+    let decoded;
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET || "your-secret-key");
+      console.log("Token verified successfully");
+    } catch (verifyError) {
+      console.error("Token verification failed:", verifyError.message);
+      return res.status(401).json({
+        success: false,
+        error: "Authentication Error",
+        message: "Token verification failed: " + verifyError.message,
+      });
+    }
 
     // Get user
     const user = await authService.getUserById(decoded.id);
