@@ -408,7 +408,7 @@ export class AuthService {
     }
   }
 
-  async register({ email, password, name }) {
+  async register({ email, password, name, avatarId = "default" }) {
     try {
       // Check if user already exists
       const existingUser = await this.usersCollection
@@ -433,6 +433,7 @@ export class AuthService {
         name,
         password: hashedPassword,
         role: "user",
+        avatarId,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
@@ -487,6 +488,12 @@ export class AuthService {
 
       // Remove password from response
       const { password: _, ...userWithoutPassword } = user;
+
+      // Ensure avatarId exists
+      if (!userWithoutPassword.avatarId) {
+        userWithoutPassword.avatarId = "default";
+      }
+
       return { user: userWithoutPassword, token };
     } catch (error) {
       // If it's already a handled error (AppError), throw it directly
@@ -534,9 +541,14 @@ export class AuthService {
         }
       }
 
+      // Filter out undefined values to prevent Firestore errors
+      const filteredUpdates = Object.fromEntries(
+        Object.entries(updates).filter(([_, value]) => value !== undefined)
+      );
+
       // Update user
       const updateData = {
-        ...updates,
+        ...filteredUpdates,
         updatedAt: new Date().toISOString(),
       };
 
@@ -546,6 +558,7 @@ export class AuthService {
       const updatedUser = await this.getUserById(userId);
       return updatedUser;
     } catch (error) {
+      console.error("Error updating user:", error);
       throw error;
     }
   }
@@ -625,12 +638,13 @@ export class AuthService {
     }
   }
 
-  async createUser({ firebaseId, email, name }) {
+  async createUser({ firebaseId, email, name, avatarId = "default" }) {
     try {
       const userData = {
         email,
         name,
         role: UserRole.USER,
+        avatarId,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };

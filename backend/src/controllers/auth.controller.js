@@ -136,6 +136,7 @@ export class AuthController {
             email: user.email,
             name: user.name,
             role: user.role,
+            avatarId: user.avatarId || "default",
           },
         },
       });
@@ -146,17 +147,19 @@ export class AuthController {
 
   updateProfile = async (req, res, next) => {
     try {
-      const { name, email } = req.body;
+      const { name, email, avatarId } = req.body;
 
       // Validate request
       validateRequest(req, {
         name: { type: "string", required: false },
         email: { type: "string", required: false },
+        avatarId: { type: "string", required: false },
       });
 
       const user = await this.authService.updateUser(req.user.id, {
         name,
         email,
+        avatarId,
       });
 
       res.json({
@@ -167,6 +170,7 @@ export class AuthController {
             email: user.email,
             name: user.name,
             role: user.role,
+            avatarId: user.avatarId,
           },
         },
       });
@@ -375,6 +379,7 @@ export class AuthController {
             email: user.email,
             name: user.name,
             role: user.role,
+            avatarId: user.avatarId || "default",
           },
         },
       });
