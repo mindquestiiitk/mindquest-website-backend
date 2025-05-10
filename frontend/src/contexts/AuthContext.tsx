@@ -9,6 +9,7 @@ interface AuthContextType {
   register: (name: string, email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   updateProfile: (data: Partial<User>) => Promise<void>;
+  updateUserProfile: (user: User) => void; // Direct update without API call
   forgotPassword: (email: string) => Promise<void>;
   resetPassword: (token: string, password: string) => Promise<void>;
   handleAuthCallback: (token: string) => void;
@@ -147,6 +148,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   };
 
+  // Direct update of user profile without API call
+  const updateUserProfile = (updatedUser: User) => {
+    setUser(updatedUser);
+  };
+
   const value = {
     user,
     loading,
@@ -155,6 +161,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     register,
     logout,
     updateProfile,
+    updateUserProfile,
     forgotPassword,
     resetPassword,
     handleAuthCallback,

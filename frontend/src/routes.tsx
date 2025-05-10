@@ -9,6 +9,7 @@ import Register from "./Pages/Register";
 import { Merch } from "./Pages/Merch";
 import MerchCheckout from "./Pages/Merch/MerchCheckout";
 import ThemePage from "./Pages/Themepage";
+import Profile from "./Pages/Profile";
 import ProtectedRoute, { PublicRoute } from "./components/ProtectedRoute";
 import ConnectionStatus from "./components/ConnectionStatus";
 import AuthCallback from "./Pages/AuthCallback";
@@ -51,6 +52,7 @@ const AppRoutes = () => {
           <Route path="/merch" element={<Merch />} />
           <Route path="/merch/checkout" element={<MerchCheckout />} />
           <Route path="/events/:eventId" element={<EventDetail />} />
+          <Route path="/profile" element={<Profile />} />
           <Route path="/auth/callback" element={<AuthCallback />} />
         </Route>
         <Route path="*" element={<NotFound />} />

@@ -17,6 +17,7 @@ export interface User {
   email: string;
   name: string;
   role: string;
+  avatarId?: string; // Optional avatar ID
 }
 
 export interface AuthResponse {
