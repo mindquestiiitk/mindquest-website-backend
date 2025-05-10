@@ -36,6 +36,7 @@ router.post("/token", arcjetProtection, authController.handleFirebaseToken);
 router.get("/me", authMiddleware, authController.getCurrentUser);
 router.put("/me", authMiddleware, authController.updateProfile);
 router.post("/logout", authMiddleware, authController.logout);
+router.post("/change-password", authMiddleware, authController.changePassword);
 
 router.post("/validate", arcjetProtection, authController.validateToken);
 

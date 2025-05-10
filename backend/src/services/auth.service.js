@@ -434,6 +434,7 @@ export class AuthService {
         password: hashedPassword,
         role: "user",
         avatarId,
+        provider: "password", // Explicitly set provider for email/password users
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
@@ -573,6 +574,15 @@ export class AuthService {
       }
 
       const user = userSnapshot.docs[0];
+      const userData = user.data();
+
+      // Check if user is using Google Auth
+      if (userData.provider === "google") {
+        throw createError(
+          400,
+          "Password reset is not available for Google accounts. Please reset your password through your Google account settings."
+        );
+      }
 
       // Generate reset token
       const resetToken = crypto.randomBytes(32).toString("hex");
@@ -622,6 +632,56 @@ export class AuthService {
     }
   }
 
+  async changePassword(userId, currentPassword, newPassword) {
+    try {
+      // Get user
+      const userDoc = await this.usersCollection.doc(userId).get();
+
+      if (!userDoc.exists) {
+        throw createError(404, "User not found");
+      }
+
+      const user = userDoc.data();
+
+      // Check if user is using Google Auth
+      if (user.provider === "google") {
+        throw createError(
+          400,
+          "Password cannot be changed for Google accounts. Please manage your password through your Google account settings."
+        );
+      }
+
+      // Verify current password
+      if (!user.password) {
+        throw createError(
+          400,
+          "Cannot change password for accounts without a password. Please use the reset password feature instead."
+        );
+      }
+
+      const isPasswordValid = await bcrypt.compare(
+        currentPassword,
+        user.password
+      );
+
+      if (!isPasswordValid) {
+        throw createError(401, "Current password is incorrect");
+      }
+
+      // Hash new password
+      const salt = await bcrypt.genSalt(10);
+      const hashedPassword = await bcrypt.hash(newPassword, salt);
+
+      // Update password
+      await this.usersCollection.doc(userId).update({
+        password: hashedPassword,
+        updatedAt: new Date().toISOString(),
+      });
+    } catch (error) {
+      throw error;
+    }
+  }
+
   async getUserByFirebaseId(firebaseId) {
     try {
       const userDoc = await this.usersCollection.doc(firebaseId).get();
@@ -638,13 +698,20 @@ export class AuthService {
     }
   }
 
-  async createUser({ firebaseId, email, name, avatarId = "default" }) {
+  async createUser({
+    firebaseId,
+    email,
+    name,
+    avatarId = "default",
+    provider = "password",
+  }) {
     try {
       const userData = {
         email,
         name,
         role: UserRole.USER,
         avatarId,
+        provider, // Add provider field
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };

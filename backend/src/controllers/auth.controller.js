@@ -137,6 +137,7 @@ export class AuthController {
             name: user.name,
             role: user.role,
             avatarId: user.avatarId || "default",
+            provider: user.provider || "password",
           },
         },
       });
@@ -171,6 +172,7 @@ export class AuthController {
             name: user.name,
             role: user.role,
             avatarId: user.avatarId,
+            provider: user.provider || "password",
           },
         },
       });
@@ -214,6 +216,31 @@ export class AuthController {
       res.json({
         success: true,
         message: "Password reset successful",
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  changePassword = async (req, res, next) => {
+    try {
+      const { currentPassword, newPassword } = req.body;
+
+      // Validate request
+      validateRequest(req, {
+        currentPassword: { type: "string", required: true },
+        newPassword: { type: "string", required: true, min: 6 },
+      });
+
+      await this.authService.changePassword(
+        req.user.id,
+        currentPassword,
+        newPassword
+      );
+
+      res.json({
+        success: true,
+        message: "Password changed successfully",
       });
     } catch (error) {
       next(error);
@@ -358,6 +385,7 @@ export class AuthController {
           firebaseId: decodedToken.uid,
           email: decodedToken.email,
           name: decodedToken.name || decodedToken.email.split("@")[0],
+          provider: "google", // Set provider for Google Auth users
         });
         console.log("New user created:", user.id);
       } else {
@@ -380,6 +408,7 @@ export class AuthController {
             name: user.name,
             role: user.role,
             avatarId: user.avatarId || "default",
+            provider: user.provider || "password",
           },
         },
       });

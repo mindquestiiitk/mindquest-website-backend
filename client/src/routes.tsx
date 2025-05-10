@@ -6,6 +6,8 @@ import { Teams } from "./Pages/Teams";
 import Home from "./Pages/Home";
 import Login from "./Pages/Login";
 import Register from "./Pages/Register";
+import ForgotPassword from "./Pages/ForgotPassword";
+import ResetPassword from "./Pages/ResetPassword";
 import { Merch } from "./Pages/Merch";
 import MerchCheckout from "./Pages/Merch/MerchCheckout";
 import ThemePage from "./Pages/Themepage";
@@ -32,6 +34,22 @@ const AppRoutes = () => {
           element={
             <PublicRoute>
               <Register />
+            </PublicRoute>
+          }
+        />
+        <Route
+          path="/forgot-password"
+          element={
+            <PublicRoute>
+              <ForgotPassword />
+            </PublicRoute>
+          }
+        />
+        <Route
+          path="/reset-password"
+          element={
+            <PublicRoute>
+              <ResetPassword />
             </PublicRoute>
           }
         />

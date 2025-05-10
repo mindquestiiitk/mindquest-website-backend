@@ -12,6 +12,10 @@ interface AuthContextType {
   updateUserProfile: (user: User) => void; // Direct update without API call
   forgotPassword: (email: string) => Promise<void>;
   resetPassword: (token: string, password: string) => Promise<void>;
+  changePassword: (
+    currentPassword: string,
+    newPassword: string
+  ) => Promise<void>;
   handleAuthCallback: (token: string) => void;
   loginWithGoogle: () => Promise<void>;
 }
@@ -129,6 +133,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   };
 
+  const changePassword = async (
+    currentPassword: string,
+    newPassword: string
+  ) => {
+    try {
+      setError(null);
+      await authService.changePassword(currentPassword, newPassword);
+    } catch (error) {
+      setError(
+        error instanceof Error ? error.message : "Failed to change password"
+      );
+      throw error;
+    }
+  };
+
   const handleAuthCallback = (token: string) => {
     authService.token = token;
     localStorage.setItem("token", token);
@@ -164,6 +183,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     updateUserProfile,
     forgotPassword,
     resetPassword,
+    changePassword,
     handleAuthCallback,
     loginWithGoogle,
   };

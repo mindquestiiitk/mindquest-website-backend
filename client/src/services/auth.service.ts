@@ -18,6 +18,7 @@ export interface User {
   name: string;
   role: string;
   avatarId?: string; // Optional avatar ID
+  provider?: string; // Authentication provider: 'password', 'google', etc.
 }
 
 export interface AuthResponse {
@@ -334,6 +335,20 @@ class AuthService {
         data: { user: User };
       }>(`${API_URL}/auth/me`, data);
       return response.data.data.user;
+    } catch (error) {
+      throw this.handleError(error);
+    }
+  }
+
+  async changePassword(
+    currentPassword: string,
+    newPassword: string
+  ): Promise<void> {
+    try {
+      await axios.post(`${API_URL}/auth/change-password`, {
+        currentPassword,
+        newPassword,
+      });
     } catch (error) {
       throw this.handleError(error);
     }

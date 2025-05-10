@@ -203,12 +203,31 @@ export default function Login() {
                 </div>
 
                 <div>
-                  <label
-                    htmlFor="password"
-                    className="block text-sm font-medium text-gray-700"
-                  >
-                    Password
-                  </label>
+                  <div className="flex justify-between items-center">
+                    <label
+                      htmlFor="password"
+                      className="block text-sm font-medium text-gray-700"
+                    >
+                      Password
+                    </label>
+                    <Link
+                      to="/forgot-password"
+                      className="text-xs font-medium text-[#006833] hover:text-[#005229] transition-colors"
+                    >
+                      Forgot password?
+                    </Link>
+                  </div>
+                  <p className="mt-1 text-xs text-gray-500">
+                    Using Google Sign-In?{" "}
+                    <a
+                      href="https://myaccount.google.com/security"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[#006833] hover:text-[#005229]"
+                    >
+                      Manage your Google account
+                    </a>
+                  </p>
                   <div className="relative">
                     <input
                       maxLength={40}
