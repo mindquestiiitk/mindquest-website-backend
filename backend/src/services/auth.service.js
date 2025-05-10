@@ -643,14 +643,6 @@ export class AuthService {
 
       const user = userDoc.data();
 
-      // Check if user is using Google Auth
-      if (user.provider === "google") {
-        throw createError(
-          400,
-          "Password cannot be changed for Google accounts. Please manage your password through your Google account settings."
-        );
-      }
-
       // Verify current password
       if (!user.password) {
         throw createError(
