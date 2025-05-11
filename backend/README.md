@@ -72,6 +72,41 @@ npm test
 npm run test:coverage
 ```
 
+## API Response Format
+
+The API supports two response formats:
+
+1. **Standard Format** (New applications should use this format):
+
+   ```json
+   {
+     "success": true,
+     "data": { ... },
+     "message": "Success message",
+     "timestamp": "2023-07-25T12:34:56.789Z"
+   }
+   ```
+
+2. **Legacy Format** (For backward compatibility):
+   ```json
+   { ... } // Raw data without wrapping
+   ```
+
+To request the standard format, add `?format=wrapped` to your API requests:
+
+```
+GET /api/events?format=wrapped
+```
+
+### Response Utilities
+
+The backend provides several response utilities:
+
+- `successResponse(res, data, message, statusCode)`: Standard success response
+- `errorResponse(res, message, statusCode, errorCode)`: Standard error response
+- `paginatedResponse(res, data, page, limit, total, message)`: Paginated response
+- `compatResponse(req, res, data, message, statusCode)`: Format-aware response
+
 ## API Documentation
 
 ### Authentication
@@ -248,10 +283,42 @@ The API uses Arcjet for rate limiting. Default limits:
 ## Security
 
 - All routes are protected with Firebase Authentication
+- Admin authorization uses collection-based access control
 - Rate limiting is implemented
 - Input validation is enforced
 - CORS is configured
 - Helmet is used for security headers
+
+### Admin Authorization
+
+Admin access is controlled by the presence of a user's ID in the `admins` collection, rather than by role claims. This provides better security and more granular control.
+
+To add a user as an admin:
+
+```javascript
+// Using the admin-utils helper
+import { addUserToAdmins } from "../utils/admin-utils.js";
+await addUserToAdmins(userId);
+
+// Or directly
+const adminDocRef = db.collection("admins").doc(userId);
+await adminDocRef.set({
+  userId,
+  email: userEmail,
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
+});
+```
+
+To migrate existing admin users:
+
+```bash
+# Run the migration script
+node src/scripts/migrate-admins.js
+
+# Deploy updated security rules
+node src/scripts/deploy-rules.js
+```
 
 ## Testing
 

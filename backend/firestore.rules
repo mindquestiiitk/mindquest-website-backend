@@ -9,7 +9,7 @@ service cloud.firestore {
 
     function isAdmin() {
       return isAuthenticated() &&
-        request.auth.token.role == 'admin';
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid));
     }
 
     function isCounselor() {
@@ -42,8 +42,8 @@ service cloud.firestore {
     }
 
     function isValidName(name) {
-      // Name must be between 2 and 50 characters
-      return name.size() >= 2 && name.size() <= 50;
+      // Name must be between 5 and 50 characters
+      return name.size() >=  5 && name.size() <= 50;
     }
 
     // Default deny all

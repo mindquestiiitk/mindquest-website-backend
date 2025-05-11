@@ -52,6 +52,19 @@ export class AuthService {
       await userRef.set(userData);
       console.log("Firestore document created successfully");
 
+      // If user is an admin, add to admins collection
+      if (role === UserRole.ADMIN) {
+        console.log("Adding user to admins collection...");
+        const adminDocRef = this.db.collection("admins").doc(userRecord.uid);
+        await adminDocRef.set({
+          userId: userRecord.uid,
+          email,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        });
+        console.log("User added to admins collection");
+      }
+
       // Create custom token
       console.log("Creating custom token...");
       const token = await this.auth.createCustomToken(userRecord.uid);
@@ -218,10 +231,34 @@ export class AuthService {
     }
 
     try {
+      // Update role in users collection
       await this.db.collection("users").doc(userId).update({
         role,
         updatedAt: new Date().toISOString(),
       });
+
+      // Handle admin collection membership
+      const adminDocRef = this.db.collection("admins").doc(userId);
+      const adminDoc = await adminDocRef.get();
+
+      if (role === UserRole.ADMIN) {
+        // Add to admins collection if not already there
+        if (!adminDoc.exists) {
+          const userDoc = await this.db.collection("users").doc(userId).get();
+          const userData = userDoc.data();
+
+          await adminDocRef.set({
+            userId,
+            email: userData.email,
+            name: userData.name || "",
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          });
+        }
+      } else if (adminDoc.exists) {
+        // Remove from admins collection if role is not admin
+        await adminDocRef.delete();
+      }
     } catch (error) {
       throw new Error(`Role update failed: ${error.message}`);
     }
@@ -323,16 +360,30 @@ export class AuthService {
 
       // Create user document in Firestore
       const userRef = this.db.collection("users").doc(userRecord.uid);
+      const role = userData.role || UserRole.USER;
+
       await userRef.set({
         email: userData.email,
         name: userData.name,
         picture: userData.picture,
-        role: userData.role || UserRole.USER,
+        role: role,
         username: userData.username,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         provider: "google",
       });
+
+      // If user is an admin, add to admins collection
+      if (role === UserRole.ADMIN) {
+        const adminDocRef = this.db.collection("admins").doc(userRecord.uid);
+        await adminDocRef.set({
+          userId: userRecord.uid,
+          email: userData.email,
+          name: userData.name || "",
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        });
+      }
 
       // Create custom token
       const token = await this.auth.createCustomToken(userRecord.uid);
@@ -440,6 +491,18 @@ export class AuthService {
       };
 
       await userRef.set(user);
+
+      // If user is an admin, add to admins collection
+      if (user.role === UserRole.ADMIN) {
+        const adminDocRef = this.db.collection("admins").doc(user.id);
+        await adminDocRef.set({
+          userId: user.id,
+          email: user.email,
+          name: user.name || "",
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        });
+      }
 
       // Remove password from response
       const { password: _, ...userWithoutPassword } = user;

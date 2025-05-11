@@ -1,86 +1,110 @@
+/**
+ * Events service
+ * Handles business logic related to events
+ */
 import { db } from "../config/firebase.config.js";
 import eventsData from "../config/events.data.js";
+import { AppError, handleFirebaseError } from "../utils/error.js";
+import { withRetry, runTransaction } from "../utils/firebase-utils.js";
+import logger from "../utils/logger.js";
 
 export class EventsService {
+  /**
+   * Get all events from Firestore
+   * @returns {Promise<Array>} Array of event objects
+   */
   async getAllEvents() {
     try {
-      console.log("Fetching all events from Firestore...");
-      const eventsSnapshot = await db.collection("events").get();
-      console.log(`Raw Firestore response:`, eventsSnapshot);
-      console.log(`Number of documents in snapshot:`, eventsSnapshot.size);
+      logger.info("Fetching all events from Firestore");
+
+      const eventsSnapshot = await withRetry(() =>
+        db.collection("events").get()
+      );
+
+      logger.debug(`Found ${eventsSnapshot.size} events in Firestore`);
 
       const events = eventsSnapshot.docs.map((doc) => {
-        const data = doc.data();
-        console.log(`Document ${doc.id} data:`, data);
         return {
           id: doc.id,
-          ...data,
+          ...doc.data(),
         };
       });
 
-      console.log(`Processed ${events.length} events from Firestore`);
-      console.log("Events data:", events);
       return events;
     } catch (error) {
-      console.error("Error in getAllEvents:", error);
-      throw error;
+      logger.error("Failed to fetch events", { error: error.message });
+      throw handleFirebaseError(error);
     }
   }
 
+  /**
+   * Get event by ID
+   * @param {string} eventId - Event ID
+   * @returns {Promise<Object|null>} Event object or null if not found
+   */
   async getEventById(eventId) {
     try {
-      console.log(`Fetching event with ID: ${eventId}`);
-      const eventDoc = await db.collection("events").doc(eventId).get();
+      logger.info(`Fetching event with ID: ${eventId}`);
+
+      const eventDoc = await withRetry(() =>
+        db.collection("events").doc(eventId).get()
+      );
+
       if (!eventDoc.exists) {
-        console.log(`Event with ID ${eventId} not found`);
+        logger.warn(`Event with ID ${eventId} not found`);
         return null;
       }
-      const data = eventDoc.data();
-      console.log(`Found event with ID ${eventId}:`, data);
+
+      logger.debug(`Found event with ID ${eventId}`);
+
       return {
         id: eventDoc.id,
-        ...data,
+        ...eventDoc.data(),
       };
     } catch (error) {
-      console.error(`Error in getEventById:`, error);
-      throw error;
+      logger.error(`Failed to fetch event by ID: ${eventId}`, {
+        error: error.message,
+      });
+      throw handleFirebaseError(error);
     }
   }
 
+  /**
+   * Seed events collection with default data
+   * @returns {Promise<boolean>} True if seeding was successful
+   */
   async seedEvents() {
     try {
-      console.log("Starting events seeding process...");
-      console.log("Events data to seed:", eventsData);
-      const batch = db.batch();
+      logger.info("Starting events seeding process");
 
-      // Clear existing events
-      console.log("Clearing existing events...");
-      const existingEvents = await db.collection("events").get();
-      console.log(`Found ${existingEvents.size} existing events to clear`);
-      existingEvents.docs.forEach((doc) => {
-        batch.delete(doc.ref);
+      return await runTransaction(db, async (transaction) => {
+        // Clear existing events
+        logger.info("Clearing existing events");
+        const existingEvents = await withRetry(() =>
+          db.collection("events").get()
+        );
+
+        logger.debug(`Found ${existingEvents.size} existing events to clear`);
+
+        // Delete existing events
+        existingEvents.docs.forEach((doc) => {
+          transaction.delete(doc.ref);
+        });
+
+        // Add new events
+        logger.info(`Adding ${eventsData.events.length} new events`);
+
+        eventsData.events.forEach((event) => {
+          logger.debug(`Adding event: ${event.title} (ID: ${event.id})`);
+          const eventRef = db.collection("events").doc(event.id);
+          transaction.set(eventRef, event);
+        });
+
+        return true;
       });
-
-      // Add new events
-      console.log(`Adding ${eventsData.events.length} new events...`);
-      eventsData.events.forEach((event) => {
-        console.log(`Adding event: ${event.title} (ID: ${event.id})`);
-        const eventRef = db.collection("events").doc(event.id);
-        batch.set(eventRef, event);
-      });
-
-      await batch.commit();
-      console.log("Events seeded successfully!");
-
-      // Verify seeding
-      const verifyEvents = await this.getAllEvents();
-      console.log(
-        `Verification: Found ${verifyEvents.length} events after seeding`
-      );
-      return true;
     } catch (error) {
-      console.error("Error seeding events:", error);
-      throw error;
+      logger.error("Failed to seed events", { error: error.message });
+      throw handleFirebaseError(error);
     }
   }
 }

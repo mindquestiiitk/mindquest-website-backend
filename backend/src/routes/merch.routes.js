@@ -1,5 +1,7 @@
 import express from "express";
 import { db } from "../config/firebase.config.js";
+import { compatResponse } from "../utils/compatibility.js";
+import logger from "../utils/logger.js";
 
 const router = express.Router();
 
@@ -79,10 +81,19 @@ router.get("/products", async (req, res) => {
       id: doc.id,
       ...doc.data(),
     }));
-    res.json(products);
+
+    // Use compatibility utility to handle both formats
+    compatResponse(req, res, products, "Products retrieved successfully");
   } catch (error) {
-    console.error("Error fetching products:", error);
-    res.status(500).json({ error: "Failed to fetch products" });
+    logger.error("Error fetching products", { error: error.message });
+    res.status(500).json({
+      success: false,
+      error: {
+        message: "Failed to fetch products",
+        code: "fetch_error",
+      },
+      timestamp: new Date().toISOString(),
+    });
   }
 });
 
@@ -91,12 +102,28 @@ router.get("/sales", async (req, res) => {
     const saleSnapshot = await db.collection("sales").limit(1).get();
     const sale = saleSnapshot.docs[0]?.data();
     if (!sale) {
-      return res.status(404).json({ error: "No sale found" });
+      logger.warn("No sale found");
+      return res.status(404).json({
+        success: false,
+        error: {
+          message: "No sale found",
+          code: "not_found",
+        },
+        timestamp: new Date().toISOString(),
+      });
     }
-    res.json(sale);
+    // Use compatibility utility to handle both formats
+    compatResponse(req, res, sale, "Sale retrieved successfully");
   } catch (error) {
-    console.error("Error fetching sale:", error);
-    res.status(500).json({ error: "Failed to fetch sale" });
+    logger.error("Error fetching sale", { error: error.message });
+    res.status(500).json({
+      success: false,
+      error: {
+        message: "Failed to fetch sale",
+        code: "fetch_error",
+      },
+      timestamp: new Date().toISOString(),
+    });
   }
 });
 
