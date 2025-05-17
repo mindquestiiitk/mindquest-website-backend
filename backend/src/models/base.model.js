@@ -1,8 +1,8 @@
-import { getFirestore } from "firebase-admin/firestore";
+import { db } from "../config/firebase.config.js";
 
 export class BaseModel {
   constructor(collectionName) {
-    this.collection = getFirestore().collection(collectionName);
+    this.collection = db.collection(collectionName);
   }
 
   async create(data) {

@@ -1,12 +1,12 @@
 import { Router } from "express";
 import { ChatController } from "../controllers/chat.controller.js";
-import { authenticate } from "../middleware/auth.middleware.js";
+import { clientAuthMiddleware } from "../middleware/client-auth.middleware.js";
 
 const router = Router();
 const chatController = new ChatController();
 
 // All routes require authentication
-router.use(authenticate);
+router.use(clientAuthMiddleware);
 
 router.post("/message", chatController.createMessage.bind(chatController));
 

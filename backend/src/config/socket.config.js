@@ -1,10 +1,11 @@
 import { Server } from "socket.io";
 import { auth } from "./firebase.config.js";
+import config from "./config.js";
 
 export const initializeSocket = (server) => {
   const io = new Server(server, {
     cors: {
-      origin: process.env.CLIENT_URL,
+      origin: config.clientUrl,
       methods: ["GET", "POST"],
       credentials: true,
     },
@@ -26,16 +27,23 @@ export const initializeSocket = (server) => {
   });
 
   io.on("connection", (socket) => {
-    console.log("User connected:", socket.user.uid);
+    // Only log detailed information in development mode
+    if (config.isDevelopment) {
+      console.log("User connected:", socket.user.uid);
+    }
 
     socket.on("join_room", (roomId) => {
       socket.join(roomId);
-      console.log(`User ${socket.user.uid} joined room ${roomId}`);
+      if (config.isDevelopment) {
+        console.log(`User ${socket.user.uid} joined room ${roomId}`);
+      }
     });
 
     socket.on("leave_room", (roomId) => {
       socket.leave(roomId);
-      console.log(`User ${socket.user.uid} left room ${roomId}`);
+      if (config.isDevelopment) {
+        console.log(`User ${socket.user.uid} left room ${roomId}`);
+      }
     });
 
     socket.on("send_message", async (data) => {
@@ -48,7 +56,9 @@ export const initializeSocket = (server) => {
     });
 
     socket.on("disconnect", () => {
-      console.log("User disconnected:", socket.user.uid);
+      if (config.isDevelopment) {
+        console.log("User disconnected:", socket.user.uid);
+      }
     });
   });
 

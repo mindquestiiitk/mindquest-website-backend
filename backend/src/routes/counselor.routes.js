@@ -1,6 +1,9 @@
 import { Router } from "express";
 import { CounselorController } from "../controllers/counselor.controller.js";
-import { authenticate, authorize } from "../middleware/auth.middleware.js";
+import {
+  clientAuthMiddleware,
+  clientAuthorize,
+} from "../middleware/client-auth.middleware.js";
 import { UserRole } from "../services/auth.service.js";
 
 const router = Router();
@@ -8,33 +11,33 @@ const counselorController = new CounselorController();
 
 router.post(
   "/:userId",
-  authenticate,
-  authorize([UserRole.ADMIN]),
+  clientAuthMiddleware,
+  clientAuthorize([UserRole.ADMIN]),
   counselorController.createCounselor.bind(counselorController)
 );
 
 router.put(
   "/availability/:userId",
-  authenticate,
-  authorize([UserRole.COUNSELOR]),
+  clientAuthMiddleware,
+  clientAuthorize([UserRole.COUNSELOR]),
   counselorController.updateAvailability.bind(counselorController)
 );
 
 router.put(
   "/rating/:userId",
-  authenticate,
+  clientAuthMiddleware,
   counselorController.updateRating.bind(counselorController)
 );
 
 router.get(
   "/search",
-  authenticate,
+  clientAuthMiddleware,
   counselorController.searchCounselors.bind(counselorController)
 );
 
 router.get(
   "/available",
-  authenticate,
+  clientAuthMiddleware,
   counselorController.getAvailableCounselors.bind(counselorController)
 );
 

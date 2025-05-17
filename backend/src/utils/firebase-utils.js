@@ -4,7 +4,6 @@
  */
 
 import logger from "./logger.js";
-import config from "../config/config.js";
 
 /**
  * Retry a Firebase operation with exponential backoff
@@ -20,22 +19,22 @@ export const withRetry = async (
   { maxRetries = 3, initialDelay = 100, maxDelay = 3000 } = {}
 ) => {
   let lastError;
-  
+
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       return await operation();
     } catch (error) {
       lastError = error;
-      
+
       // Only retry on specific Firebase errors that are transient
-      const isTransient = 
-        error.code === "unavailable" || 
+      const isTransient =
+        error.code === "unavailable" ||
         error.code === "resource-exhausted" ||
         error.code === "deadline-exceeded" ||
         error.code === "internal" ||
         error.code === "cancelled" ||
         error.message?.includes("network error");
-                          
+
       if (!isTransient || attempt === maxRetries) {
         logger.error("Firebase operation failed permanently", {
           error: error.message,
@@ -44,24 +43,24 @@ export const withRetry = async (
         });
         throw error;
       }
-      
+
       // Exponential backoff with jitter
       const delay = Math.min(
         initialDelay * Math.pow(2, attempt - 1) * (0.5 + Math.random()),
         maxDelay
       );
-      
+
       logger.warn(`Retrying Firebase operation`, {
         attempt,
         maxRetries,
         delay: Math.round(delay),
         error: error.message,
       });
-      
-      await new Promise(resolve => setTimeout(resolve, delay));
+
+      await new Promise((resolve) => setTimeout(resolve, delay));
     }
   }
-  
+
   throw lastError;
 };
 
@@ -73,10 +72,7 @@ export const withRetry = async (
  * @returns {Promise<any>} - Result of the transaction
  */
 export const runTransaction = async (db, transactionFn, options = {}) => {
-  return withRetry(
-    () => db.runTransaction(transactionFn),
-    options
-  );
+  return withRetry(() => db.runTransaction(transactionFn), options);
 };
 
 /**
@@ -112,11 +108,11 @@ export const getDocument = async (db, collection, docId) => {
   try {
     const docRef = db.collection(collection).doc(docId);
     const doc = await withRetry(() => docRef.get());
-    
+
     if (!doc.exists) {
       return null;
     }
-    
+
     return {
       id: doc.id,
       ...doc.data(),

@@ -5,7 +5,6 @@
 import { TeamsService } from "../services/teams.service.js";
 import { catchAsync } from "../utils/error.js";
 import { successResponse, notFoundResponse } from "../utils/response.js";
-import { compatResponse } from "../utils/compatibility.js";
 import logger from "../utils/logger.js";
 
 export class TeamsController {
@@ -34,13 +33,8 @@ export class TeamsController {
       });
     }
 
-    // Use compatibility utility to handle both formats
-    compatResponse(
-      req,
-      res,
-      teamMembers,
-      "Team members retrieved successfully"
-    );
+    // Use standardized response format
+    successResponse(res, teamMembers, "Team members retrieved successfully");
   });
 
   /**
@@ -62,8 +56,8 @@ export class TeamsController {
     }
 
     logger.debug(`Team member found: ${id}`);
-    // Use compatibility utility to handle both formats
-    compatResponse(req, res, member, "Team member retrieved successfully");
+    // Use standardized response format
+    successResponse(res, member, "Team member retrieved successfully");
   });
 
   /**
@@ -80,9 +74,8 @@ export class TeamsController {
     const members = await this.teamsService.getTeamMembersByType(type);
     logger.debug(`Found ${members.length} team members with type ${type}`);
 
-    // Use compatibility utility to handle both formats
-    compatResponse(
-      req,
+    // Use standardized response format
+    successResponse(
       res,
       members,
       `Team members with type ${type} retrieved successfully`
@@ -103,9 +96,8 @@ export class TeamsController {
     const members = await this.teamsService.getTeamMembersByBatch(batch);
     logger.debug(`Found ${members.length} team members with batch ${batch}`);
 
-    // Use compatibility utility to handle both formats
-    compatResponse(
-      req,
+    // Use standardized response format
+    successResponse(
       res,
       members,
       `Team members with batch ${batch} retrieved successfully`

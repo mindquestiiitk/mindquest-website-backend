@@ -5,9 +5,9 @@
 import express from "express";
 import { TeamsController } from "../controllers/teams.controller.js";
 import {
-  authMiddleware,
-  authorizeAdmin,
-} from "../middleware/auth.middleware.js";
+  clientAuthMiddleware,
+  clientIsAdmin,
+} from "../middleware/client-auth.middleware.js";
 import logger from "../utils/logger.js";
 
 const router = express.Router();
@@ -37,6 +37,11 @@ router.get("/:id", teamsController.getTeamMemberById);
 
 // Protected routes
 // Seed teams (admin only)
-router.post("/seed", authMiddleware, authorizeAdmin, teamsController.seedTeams);
+router.post(
+  "/seed",
+  clientAuthMiddleware,
+  clientIsAdmin,
+  teamsController.seedTeams
+);
 
 export default router;

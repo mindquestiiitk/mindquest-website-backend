@@ -1,77 +1,305 @@
 /**
- * Authentication middleware
- * Provides JWT authentication and role-based authorization
+ * Authentication Middleware
+ * Verifies Firebase ID tokens from client-side authentication
  */
 
-import jwt from "jsonwebtoken";
+import { auth, db } from "../config/firebase.config.js";
 import { AppError, catchAsync } from "../utils/error.js";
-import { AuthService } from "../services/auth.service.js";
-import config from "../config/config.js";
 import logger from "../utils/logger.js";
 import { documentExists } from "../utils/firebase-utils.js";
-import { db } from "../config/firebase.config.js";
-
-const authService = new AuthService();
 
 /**
- * Authenticate user middleware
- * Verifies JWT token and attaches user to request
+ * Middleware to verify Firebase ID tokens
  */
 export const authMiddleware = catchAsync(async (req, res, next) => {
-  // Get token from header
+  // Get the ID token from multiple sources
+  let idToken = null;
+
+  // First try Authorization header (preferred method)
   const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+  if (authHeader && authHeader.startsWith("Bearer ")) {
+    idToken = authHeader.split("Bearer ")[1];
+  }
+
+  // If no token in Authorization header, try cookies
+  if (!idToken && req.cookies && req.cookies.token) {
+    idToken = req.cookies.token;
+    logger.debug("Using token from cookies instead of Authorization header", {
+      path: req.path,
+      tokenLength: idToken?.length || 0,
+    });
+  }
+
+  // In development, also allow token in query parameter
+  if (
+    !idToken &&
+    process.env.NODE_ENV === "development" &&
+    req.query &&
+    req.query.token
+  ) {
+    idToken = req.query.token;
+    logger.debug("Development mode: Using token from query parameter", {
+      path: req.path,
+      tokenLength: idToken?.length || 0,
+    });
+  }
+
+  if (!idToken) {
+    logger.warn("No token provided", {
+      path: req.path,
+      hasAuthHeader: !!req.headers.authorization,
+      hasCookies: !!req.cookies,
+      hasQueryToken: !!(req.query && req.query.token),
+    });
     throw new AppError(
       401,
-      "No authentication token provided",
-      "token_missing"
+      "No authentication token provided. Please login again.",
+      "no_token"
     );
   }
 
-  const token = authHeader.split(" ")[1];
-
-  // Verify token
-  let decoded;
   try {
-    decoded = jwt.verify(token, config.jwt.secret);
-    logger.debug("Token verified successfully", { userId: decoded.id });
-  } catch (verifyError) {
-    logger.warn("Token verification failed", {
-      error: verifyError.message,
-      name: verifyError.name,
-    });
+    // Add more detailed logging for token debugging in development
+    if (process.env.NODE_ENV === "development") {
+      try {
+        // Simple decode without verification for debugging
+        const tokenParts = idToken.split(".");
+        if (tokenParts.length === 3) {
+          const payload = JSON.parse(
+            Buffer.from(tokenParts[1], "base64").toString()
+          );
+          logger.debug("Token payload for debugging:", {
+            uid: payload.uid || payload.sub || "missing",
+            email: payload.email ? "present" : "missing",
+            exp: payload.exp
+              ? new Date(payload.exp * 1000).toISOString()
+              : "missing",
+            iat: payload.iat
+              ? new Date(payload.iat * 1000).toISOString()
+              : "missing",
+          });
+        }
+      } catch (decodeError) {
+        logger.warn(
+          "Failed to decode token for debugging:",
+          decodeError.message
+        );
+      }
+    }
 
-    if (verifyError.name === "JsonWebTokenError") {
-      throw new AppError(401, "Invalid authentication token", "token_invalid");
-    } else if (verifyError.name === "TokenExpiredError") {
+    // Verify the ID token with multiple retries in development mode
+    let decodedToken;
+    let retries = process.env.NODE_ENV === "development" ? 3 : 1;
+    let lastError = null;
+
+    while (retries > 0) {
+      try {
+        decodedToken = await auth.verifyIdToken(idToken);
+        break; // Success, exit the loop
+      } catch (verifyError) {
+        lastError = verifyError;
+        logger.warn(
+          `Token verification attempt failed (retries left: ${retries - 1})`,
+          {
+            error: verifyError.message,
+            code: verifyError.code,
+            path: req.path,
+          }
+        );
+
+        // Only retry in development mode
+        if (process.env.NODE_ENV === "development" && retries > 1) {
+          // Wait before retrying
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+        }
+        retries--;
+      }
+    }
+
+    // If all retries failed, throw the last error
+    if (!decodedToken) {
+      throw (
+        lastError || new Error("Failed to verify token after multiple attempts")
+      );
+    }
+
+    // Check if token is expired
+    const tokenExpiration = decodedToken.exp * 1000; // Convert to milliseconds
+    if (Date.now() >= tokenExpiration) {
+      logger.warn("Token expired", { path: req.path, uid: decodedToken.uid });
       throw new AppError(
         401,
-        "Authentication token has expired",
+        "Authentication token expired. Please login again.",
         "token_expired"
       );
     }
 
-    throw new AppError(401, "Authentication failed", "auth_failed");
+    // Get user from Firestore
+    let userDoc = await db.collection("users").doc(decodedToken.uid).get();
+
+    // In development mode, create the user if it doesn't exist
+    if (!userDoc.exists) {
+      if (process.env.NODE_ENV === "development") {
+        logger.warn(
+          "User not found for token in development mode, creating it",
+          {
+            uid: decodedToken.uid,
+            path: req.path,
+          }
+        );
+
+        // Create a basic user profile
+        try {
+          await db
+            .collection("users")
+            .doc(decodedToken.uid)
+            .set({
+              email: decodedToken.email || "",
+              name:
+                decodedToken.name ||
+                decodedToken.email?.split("@")[0] ||
+                "User",
+              role: "user",
+              emailVerified: decodedToken.email_verified || false,
+              avatarId: "default",
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+              lastActive: new Date().toISOString(),
+            });
+
+          // Get the newly created user
+          const newUserDoc = await db
+            .collection("users")
+            .doc(decodedToken.uid)
+            .get();
+          if (newUserDoc.exists) {
+            logger.info("Created user profile in development mode", {
+              uid: decodedToken.uid,
+              path: req.path,
+            });
+            userDoc = newUserDoc;
+          } else {
+            throw new Error("Failed to create user profile");
+          }
+        } catch (createError) {
+          logger.error("Failed to create user profile in development mode", {
+            error: createError.message,
+            uid: decodedToken.uid,
+            path: req.path,
+          });
+          throw new AppError(
+            401,
+            "User not found and could not be created",
+            "user_not_found"
+          );
+        }
+      } else {
+        logger.warn("User not found for token", {
+          uid: decodedToken.uid,
+          path: req.path,
+        });
+        throw new AppError(
+          401,
+          "User not found. Please login again.",
+          "user_not_found"
+        );
+      }
+    }
+
+    const userData = userDoc.data();
+
+    // Add user to request
+    req.user = {
+      id: decodedToken.uid,
+      email: decodedToken.email,
+      name: userData.name,
+      role: userData.role || "user",
+      emailVerified: decodedToken.email_verified,
+      provider: userData.provider || "password",
+      avatarId: userData.avatarId || "default",
+    };
+
+    // Log authentication success
+    logger.debug("User authenticated via Firebase token", {
+      userId: req.user.id,
+      role: req.user.role,
+      path: req.path,
+    });
+
+    next();
+  } catch (error) {
+    // Handle Firebase auth errors
+    logger.error("Token verification error", {
+      error: error.message,
+      code: error.code,
+      path: req.path,
+      stack: error.stack,
+    });
+
+    // Map Firebase auth errors to user-friendly messages
+    let statusCode = 401;
+    let message = "Invalid authentication token. Please login again.";
+    let errorCode = "invalid_token";
+
+    switch (error.code) {
+      case "auth/id-token-expired":
+        message = "Authentication token expired. Please login again.";
+        errorCode = "token_expired";
+        break;
+      case "auth/id-token-revoked":
+        message = "Authentication token has been revoked. Please login again.";
+        errorCode = "token_revoked";
+        break;
+      case "auth/invalid-id-token":
+        message = "Invalid authentication token. Please login again.";
+        errorCode = "invalid_token";
+        break;
+      case "auth/user-disabled":
+        message = "User account has been disabled. Please contact support.";
+        errorCode = "user_disabled";
+        break;
+      case "auth/user-not-found":
+        message = "User not found. Please login again.";
+        errorCode = "user_not_found";
+        break;
+      case "auth/argument-error":
+        message = "Invalid authentication token format. Please login again.";
+        errorCode = "invalid_token_format";
+        break;
+      case "auth/network-request-failed":
+        message =
+          "Network error while verifying authentication. Please try again.";
+        errorCode = "network_error";
+        break;
+      case "auth/requires-recent-login":
+        message = "This action requires a recent login. Please login again.";
+        errorCode = "requires_recent_login";
+        break;
+      case "auth/internal-error":
+        message = "Authentication service error. Please try again later.";
+        errorCode = "internal_error";
+        break;
+      default:
+        // For unknown errors, provide more details in development mode
+        if (process.env.NODE_ENV === "development") {
+          message = `Authentication error: ${error.message}. Please login again.`;
+          logger.debug("Detailed auth error in development mode", {
+            error: error.message,
+            stack: error.stack,
+            path: req.path,
+          });
+        }
+        break;
+    }
+
+    // In development mode, add a retry-after header to help client retry
+    if (process.env.NODE_ENV === "development") {
+      res.set("Retry-After", "5");
+      res.set("X-Auth-Error-Code", errorCode);
+    }
+
+    throw new AppError(statusCode, message, errorCode);
   }
-
-  // Get user
-  const user = await authService.getUserById(decoded.id);
-  if (!user) {
-    logger.warn("User not found for token", { userId: decoded.id });
-    throw new AppError(401, "User not found", "user_not_found");
-  }
-
-  // Add user to request
-  req.user = user;
-
-  // Log authentication success
-  logger.debug("User authenticated", {
-    userId: user.id,
-    role: user.role,
-    path: req.path,
-  });
-
-  next();
 });
 
 /**
@@ -83,7 +311,7 @@ export const authMiddleware = catchAsync(async (req, res, next) => {
 export const authorize = (roles = []) => {
   return catchAsync(async (req, res, next) => {
     if (!req.user) {
-      throw new AppError(401, "Not authenticated", "not_authenticated");
+      throw new AppError(401, "Authentication required", "auth_required");
     }
 
     // Convert single role to array
@@ -99,8 +327,8 @@ export const authorize = (roles = []) => {
 
       throw new AppError(
         403,
-        "You do not have permission to perform this action",
-        "insufficient_role"
+        "You don't have permission to access this resource",
+        "insufficient_permissions"
       );
     }
 
@@ -114,7 +342,7 @@ export const authorize = (roles = []) => {
  */
 export const authorizeAdmin = catchAsync(async (req, res, next) => {
   if (!req.user) {
-    throw new AppError(401, "Not authenticated", "not_authenticated");
+    throw new AppError(401, "Authentication required", "auth_required");
   }
 
   // Check if user exists in admins collection
@@ -128,6 +356,9 @@ export const authorizeAdmin = catchAsync(async (req, res, next) => {
 
     throw new AppError(403, "Admin access required", "admin_required");
   }
+
+  // Add admin flag to user object
+  req.user.isAdmin = true;
 
   logger.debug("Admin authorized", { userId: req.user.id });
   next();

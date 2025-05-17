@@ -5,9 +5,9 @@
 import express from "express";
 import { EventsController } from "../controllers/events.controller.js";
 import {
-  authMiddleware,
-  authorizeAdmin,
-} from "../middleware/auth.middleware.js";
+  clientAuthMiddleware,
+  clientIsAdmin,
+} from "../middleware/client-auth.middleware.js";
 import logger from "../utils/logger.js";
 
 const router = express.Router();
@@ -33,8 +33,8 @@ router.get("/:id", eventsController.getEventById);
 // Seed events (admin only)
 router.post(
   "/seed",
-  authMiddleware,
-  authorizeAdmin,
+  clientAuthMiddleware,
+  clientIsAdmin,
   eventsController.seedEvents
 );
 

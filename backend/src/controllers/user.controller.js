@@ -60,6 +60,27 @@ export class UserController {
     }
   }
 
+  async updateUserPreferences(req, res) {
+    try {
+      const userId = req.user.uid;
+      const preferences = req.body;
+      const profile = await this.userService.updateUserPreferences(
+        userId,
+        preferences
+      );
+      res.status(200).json({
+        success: true,
+        data: profile,
+        message: "User preferences updated successfully",
+      });
+    } catch (error) {
+      res.status(400).json({
+        success: false,
+        error: error.message,
+      });
+    }
+  }
+
   async deleteUser(req, res) {
     try {
       const { userId } = req.params;

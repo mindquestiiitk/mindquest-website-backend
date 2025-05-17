@@ -1,12 +1,12 @@
 import { Router } from "express";
 import { UserController } from "../controllers/user.controller.js";
-import { authenticate } from "../middleware/auth.middleware.js";
+import { clientAuthMiddleware } from "../middleware/client-auth.middleware.js";
 
 const router = Router();
 const userController = new UserController();
 
 // All routes require authentication
-router.use(authenticate);
+router.use(clientAuthMiddleware);
 
 router.get(
   "/profile/:userId",
@@ -18,17 +18,10 @@ router.put(
   userController.updateUserProfile.bind(userController)
 );
 
-router.put("/preferences", async (req, res) => {
-  try {
-    const profile = await userController.updateUserPreferences(
-      req.user.uid,
-      req.body
-    );
-    res.json(profile);
-  } catch (error) {
-    res.status(400).json({ error: error.message });
-  }
-});
+router.put(
+  "/preferences",
+  userController.updateUserPreferences.bind(userController)
+);
 
 router.delete("/:userId", userController.deleteUser.bind(userController));
 

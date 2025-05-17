@@ -36,4 +36,44 @@ export class ChatService {
       throw new Error(`Failed to get chat history: ${error.message}`);
     }
   }
+
+  async getUnreadMessages(userId) {
+    try {
+      const messages = await db
+        .collection("messages")
+        .where("receiverId", "==", userId)
+        .where("read", "==", false)
+        .orderBy("timestamp", "desc")
+        .get();
+
+      return messages.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+    } catch (error) {
+      throw new Error(`Failed to get unread messages: ${error.message}`);
+    }
+  }
+
+  async markMessagesAsRead(senderId, receiverId) {
+    try {
+      const messages = await db
+        .collection("messages")
+        .where("senderId", "==", senderId)
+        .where("receiverId", "==", receiverId)
+        .where("read", "==", false)
+        .get();
+
+      // Use a batch to update multiple documents efficiently
+      const batch = db.batch();
+      messages.docs.forEach((doc) => {
+        batch.update(doc.ref, { read: true });
+      });
+
+      await batch.commit();
+      return { count: messages.size };
+    } catch (error) {
+      throw new Error(`Failed to mark messages as read: ${error.message}`);
+    }
+  }
 }

@@ -1,12 +1,13 @@
 import { db } from "../config/firebase.config.js";
+import logger from "../utils/logger.js";
 
 export class TeamsService {
   async getAllTeamMembers() {
     try {
-      console.log("Fetching all team members from Firestore...");
+      logger.info("Fetching all team members from Firestore...");
       try {
         const teamsSnapshot = await db.collection("teams").get();
-        console.log(`Number of documents in snapshot:`, teamsSnapshot.size);
+        logger.debug(`Number of documents in snapshot: ${teamsSnapshot.size}`);
 
         if (teamsSnapshot.size > 0) {
           const teamMembers = teamsSnapshot.docs.map((doc) => {
@@ -17,62 +18,64 @@ export class TeamsService {
             };
           });
 
-          console.log(
+          logger.debug(
             `Processed ${teamMembers.length} team members from Firestore`
           );
           return teamMembers;
         } else {
-          console.log(
+          logger.info(
             "No team members found in Firestore, attempting to seed from people.json..."
           );
           try {
             // Try to seed from people.json using the seedTeamsFromPeopleJson method
             return await this.seedTeamsFromPeopleJson();
           } catch (seedError) {
-            console.error("Error seeding from people.json:", seedError);
+            logger.error("Error seeding from people.json:", seedError);
             throw new Error(
               "No team members found in database. Please run the seed-teams.js script to populate the database."
             );
           }
         }
       } catch (firestoreError) {
-        console.error("Error accessing Firestore:", firestoreError);
+        logger.error("Error accessing Firestore:", {
+          error: firestoreError.message,
+        });
         throw firestoreError;
       }
     } catch (error) {
-      console.error("Error in getAllTeamMembers:", error);
+      logger.error("Error in getAllTeamMembers:", { error: error.message });
       throw error;
     }
   }
 
   async getTeamMemberById(memberId) {
     try {
-      console.log(`Fetching team member with ID: ${memberId}`);
+      logger.info(`Fetching team member with ID: ${memberId}`);
       const memberDoc = await db.collection("teams").doc(memberId).get();
       if (!memberDoc.exists) {
-        console.log(`Team member with ID ${memberId} not found`);
+        logger.info(`Team member with ID ${memberId} not found`);
         return null;
       }
       const data = memberDoc.data();
-      console.log(`Found team member with ID ${memberId}:`, data);
+      logger.debug(`Found team member with ID ${memberId}`);
       return {
         id: memberDoc.id,
         ...data,
       };
     } catch (error) {
-      console.error(`Error in getTeamMemberById:`, error);
+      logger.error(`Error in getTeamMemberById:`, { error: error.message });
       throw error;
     }
   }
 
   async getTeamMembersByType(type) {
     try {
-      console.log(`Fetching team members with type: ${type}`);
+      logger.info(`Fetching team members with type: ${type}`);
       const membersSnapshot = await db
         .collection("teams")
         .where("type", "==", type)
         .get();
-      console.log(
+      logger.debug(
         `Found ${membersSnapshot.size} team members with type ${type}`
       );
 
@@ -86,19 +89,19 @@ export class TeamsService {
 
       return members;
     } catch (error) {
-      console.error(`Error in getTeamMembersByType:`, error);
+      logger.error(`Error in getTeamMembersByType:`, { error: error.message });
       throw error;
     }
   }
 
   async getTeamMembersByBatch(batch) {
     try {
-      console.log(`Fetching team members with batch: ${batch}`);
+      logger.info(`Fetching team members with batch: ${batch}`);
       const membersSnapshot = await db
         .collection("teams")
         .where("batch", "==", batch)
         .get();
-      console.log(
+      logger.debug(
         `Found ${membersSnapshot.size} team members with batch ${batch}`
       );
 
@@ -112,24 +115,24 @@ export class TeamsService {
 
       return members;
     } catch (error) {
-      console.error(`Error in getTeamMembersByBatch:`, error);
+      logger.error(`Error in getTeamMembersByBatch:`, { error: error.message });
       throw error;
     }
   }
 
   async seedTeams() {
     try {
-      console.log("Starting teams seeding process...");
+      logger.info("Starting teams seeding process...");
       return await this.seedTeamsFromPeopleJson();
     } catch (error) {
-      console.error("Error seeding teams:", error);
+      logger.error("Error seeding teams:", { error: error.message });
       throw error;
     }
   }
 
   async seedTeamsFromPeopleJson() {
     try {
-      console.log("Attempting to read people.json and seed the database...");
+      logger.info("Attempting to read people.json and seed the database...");
 
       // Import fs and path modules
       const fs = await import("fs");
@@ -155,7 +158,7 @@ export class TeamsService {
       const peopleData = JSON.parse(
         fs.default.readFileSync(peopleJsonPath, "utf8")
       );
-      console.log("Read people.json file successfully");
+      logger.debug("Read people.json file successfully");
 
       // Transform the data to the format expected by our application
       const transformedData = [];
@@ -236,28 +239,30 @@ export class TeamsService {
         });
       }
 
-      console.log(`Transformed ${transformedData.length} team members`);
+      logger.debug(`Transformed ${transformedData.length} team members`);
 
       // Use the seedTeamsWithData method to save the data to Firestore
       return await this.seedTeamsWithData(transformedData);
     } catch (error) {
-      console.error("Error in seedTeamsFromPeopleJson:", error);
+      logger.error("Error in seedTeamsFromPeopleJson:", {
+        error: error.message,
+      });
       throw error;
     }
   }
 
   async seedTeamsWithData(teamData) {
     try {
-      console.log("Starting teams seeding process with custom data...");
-      console.log(`Custom team data to seed: ${teamData.length} members`);
+      logger.info("Starting teams seeding process with custom data...");
+      logger.debug(`Custom team data to seed: ${teamData.length} members`);
 
       try {
         const batch = db.batch();
 
         // Clear existing team members
-        console.log("Clearing existing team members...");
+        logger.info("Clearing existing team members...");
         const existingMembers = await db.collection("teams").get();
-        console.log(
+        logger.debug(
           `Found ${existingMembers.size} existing team members to clear`
         );
         existingMembers.docs.forEach((doc) => {
@@ -265,25 +270,29 @@ export class TeamsService {
         });
 
         // Add new team members
-        console.log(`Adding ${teamData.length} new team members...`);
+        logger.info(`Adding ${teamData.length} new team members...`);
         teamData.forEach((member) => {
-          console.log(`Adding team member: ${member.name} (ID: ${member.id})`);
+          logger.debug(`Adding team member: ${member.name} (ID: ${member.id})`);
           const memberRef = db.collection("teams").doc(member.id);
           batch.set(memberRef, member);
         });
 
         await batch.commit();
-        console.log("Teams seeded successfully with custom data!");
+        logger.info("Teams seeded successfully with custom data!");
 
         // Return the team data directly instead of trying to verify
         // This avoids a potential infinite recursion issue
         return teamData;
       } catch (firestoreError) {
-        console.error("Error with Firestore operations:", firestoreError);
+        logger.error("Error with Firestore operations:", {
+          error: firestoreError.message,
+        });
         throw firestoreError;
       }
     } catch (error) {
-      console.error("Error seeding teams with custom data:", error);
+      logger.error("Error seeding teams with custom data:", {
+        error: error.message,
+      });
       throw error;
     }
   }

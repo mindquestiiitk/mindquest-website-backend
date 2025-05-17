@@ -1,68 +1,95 @@
 /**
- * Request validation utilities
- * Provides consistent validation across the application
+ * Request Validation Middleware
+ *
+ * Production-ready validation middleware that:
+ * - Validates request data against schemas
+ * - Provides detailed error messages
+ * - Logs validation failures for monitoring
+ * - Sanitizes inputs to prevent injection attacks
  */
 
-import { AppError } from "./error.js";
+import { AppError, ErrorCategory } from "./error.js";
 import logger from "./logger.js";
+import { validateData } from "./validation-schemas.js";
 
 /**
- * Validate request data against a schema
- * @param {Object} data - Data to validate
+ * Validate and sanitize request data
+ * @param {Object} data - Request data to validate
  * @param {Object} schema - Validation schema
  * @throws {AppError} - Throws an error if validation fails
  */
-export const validateData = (data, schema) => {
-  // Check required fields
-  for (const [field, rules] of Object.entries(schema)) {
-    if (rules.required && (data[field] === undefined || data[field] === null || data[field] === "")) {
-      throw new AppError(400, `${field} is required`, "validation_error");
-    }
-    
-    if (data[field] !== undefined && data[field] !== null) {
-      // Check type
-      if (rules.type && typeof data[field] !== rules.type) {
-        throw new AppError(400, `${field} must be a ${rules.type}`, "validation_error");
-      }
-      
-      // Check string length
-      if (rules.type === "string") {
-        if (rules.min && data[field].length < rules.min) {
-          throw new AppError(400, `${field} must be at least ${rules.min} characters`, "validation_error");
-        }
-        
-        if (rules.max && data[field].length > rules.max) {
-          throw new AppError(400, `${field} must be at most ${rules.max} characters`, "validation_error");
-        }
-      }
-      
-      // Check number range
-      if (rules.type === "number") {
-        if (rules.min !== undefined && data[field] < rules.min) {
-          throw new AppError(400, `${field} must be at least ${rules.min}`, "validation_error");
-        }
-        
-        if (rules.max !== undefined && data[field] > rules.max) {
-          throw new AppError(400, `${field} must be at most ${rules.max}`, "validation_error");
-        }
-      }
-      
-      // Check email format
-      if (rules.format === "email" && !isValidEmail(data[field])) {
-        throw new AppError(400, `${field} must be a valid email address`, "validation_error");
-      }
+export const validateAndSanitize = (data, schema) => {
+  // Validate data against schema
+  const validation = validateData(data, schema);
+
+  if (!validation.isValid) {
+    // Format validation errors
+    const errorMessages = validation.errors
+      .map((err) => err.message)
+      .join("; ");
+    const errorDetails = validation.errors.reduce((acc, err) => {
+      acc[err.field] = err.message;
+      return acc;
+    }, {});
+
+    // Create validation error
+    const error = new AppError(
+      400,
+      `Validation failed: ${errorMessages}`,
+      "validation_error",
+      ErrorCategory.VALIDATION
+    );
+
+    // Add error details
+    error.details = errorDetails;
+
+    throw error;
+  }
+
+  // Sanitize string inputs to prevent XSS
+  const sanitizedData = {};
+
+  for (const [key, value] of Object.entries(data)) {
+    if (typeof value === "string") {
+      // Sanitize HTML content in strings
+      sanitizedData[key] = sanitizeHtml(value);
+    } else {
+      sanitizedData[key] = value;
     }
   }
+
+  return sanitizedData;
 };
 
 /**
- * Validate email format
- * @param {string} email - Email to validate
- * @returns {boolean} - Whether the email is valid
+ * Production-ready HTML sanitization utility
+ * Uses a comprehensive approach to prevent XSS attacks
+ * @param {string} html - HTML string to sanitize
+ * @returns {string} - Sanitized string
  */
-export const isValidEmail = (email) => {
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  return emailRegex.test(email);
+export const sanitizeHtml = (html) => {
+  if (!html) return html;
+
+  // For production, we use a comprehensive sanitization approach
+  return (
+    html
+      // Replace HTML special chars with entities
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;")
+      // Remove potential script injections
+      .replace(/javascript:/gi, "")
+      .replace(/on\w+=/gi, "")
+      .replace(/data:/gi, "")
+      // Remove potential CSS injections
+      .replace(/expression\(/gi, "")
+      .replace(/url\(/gi, "")
+      // Remove other potentially dangerous patterns
+      .replace(/eval\(/gi, "")
+      .replace(/Function\(/gi, "")
+  );
 };
 
 /**
@@ -71,57 +98,32 @@ export const isValidEmail = (email) => {
  * @returns {Function} - Express middleware
  */
 export const validateRequest = (schema) => {
-  return (req, res, next) => {
+  return (req, _res, next) => {
     try {
-      validateData(req.body, schema);
+      // Validate and sanitize request body
+      const sanitizedData = validateAndSanitize(req.body, schema);
+
+      // Replace request body with sanitized data
+      req.body = sanitizedData;
+
+      // Add validation timestamp for debugging
+      req.validatedAt = new Date().toISOString();
+
       next();
     } catch (error) {
-      logger.warn("Validation error", { 
-        path: req.path, 
-        body: req.body, 
-        error: error.message 
+      // Log validation errors
+      logger.warn("Validation error", {
+        path: req.path,
+        method: req.method,
+        ip: req.ip,
+        userAgent: req.get("user-agent"),
+        requestId: req.requestId,
+        body: req.body,
+        error: error.message,
+        details: error.details,
       });
+
       next(error);
     }
   };
-};
-
-/**
- * Common validation schemas
- */
-export const schemas = {
-  auth: {
-    register: {
-      email: { type: "string", required: true, format: "email" },
-      password: { type: "string", required: true, min: 6 },
-      name: { type: "string", required: true },
-      avatarId: { type: "string" },
-    },
-    
-    login: {
-      email: { type: "string", required: true, format: "email" },
-      password: { type: "string", required: true },
-    },
-    
-    forgotPassword: {
-      email: { type: "string", required: true, format: "email" },
-    },
-    
-    resetPassword: {
-      token: { type: "string", required: true },
-      password: { type: "string", required: true, min: 6 },
-    },
-    
-    changePassword: {
-      currentPassword: { type: "string", required: true },
-      newPassword: { type: "string", required: true, min: 6 },
-    },
-  },
-  
-  user: {
-    updateProfile: {
-      name: { type: "string" },
-      avatarId: { type: "string" },
-    },
-  },
 };

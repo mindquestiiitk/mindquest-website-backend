@@ -14,7 +14,7 @@ const colors = {
   blink: "\x1b[5m",
   reverse: "\x1b[7m",
   hidden: "\x1b[8m",
-  
+
   black: "\x1b[30m",
   red: "\x1b[31m",
   green: "\x1b[32m",
@@ -23,7 +23,7 @@ const colors = {
   magenta: "\x1b[35m",
   cyan: "\x1b[36m",
   white: "\x1b[37m",
-  
+
   bgBlack: "\x1b[40m",
   bgRed: "\x1b[41m",
   bgGreen: "\x1b[42m",
@@ -31,7 +31,7 @@ const colors = {
   bgBlue: "\x1b[44m",
   bgMagenta: "\x1b[45m",
   bgCyan: "\x1b[46m",
-  bgWhite: "\x1b[47m"
+  bgWhite: "\x1b[47m",
 };
 
 // Log levels
@@ -44,7 +44,9 @@ const LOG_LEVELS = {
 };
 
 // Current log level based on environment
-const currentLogLevel = config.isDevelopment ? LOG_LEVELS.DEBUG : LOG_LEVELS.INFO;
+const currentLogLevel = config.isDevelopment
+  ? LOG_LEVELS.DEBUG
+  : LOG_LEVELS.INFO;
 
 /**
  * Format log message with timestamp and level
@@ -55,10 +57,10 @@ const currentLogLevel = config.isDevelopment ? LOG_LEVELS.DEBUG : LOG_LEVELS.INF
  */
 const formatLog = (level, message, meta = {}) => {
   const timestamp = new Date().toISOString();
-  const metaString = Object.keys(meta).length 
+  const metaString = Object.keys(meta).length
     ? JSON.stringify(meta, null, config.isDevelopment ? 2 : 0)
-    : '';
-  
+    : "";
+
   return `[${timestamp}] ${level.toUpperCase()}: ${message} ${metaString}`;
 };
 
@@ -87,34 +89,34 @@ const shouldLog = (level) => {
 const logger = {
   error: (message, meta = {}) => {
     if (shouldLog(LOG_LEVELS.ERROR)) {
-      logToConsole('error', colors.red, message, meta);
+      logToConsole("error", colors.red, message, meta);
     }
   },
-  
+
   warn: (message, meta = {}) => {
     if (shouldLog(LOG_LEVELS.WARN)) {
-      logToConsole('warn', colors.yellow, message, meta);
+      logToConsole("warn", colors.yellow, message, meta);
     }
   },
-  
+
   info: (message, meta = {}) => {
     if (shouldLog(LOG_LEVELS.INFO)) {
-      logToConsole('info', colors.green, message, meta);
+      logToConsole("info", colors.green, message, meta);
     }
   },
-  
+
   http: (message, meta = {}) => {
     if (shouldLog(LOG_LEVELS.HTTP)) {
-      logToConsole('http', colors.cyan, message, meta);
+      logToConsole("http", colors.cyan, message, meta);
     }
   },
-  
+
   debug: (message, meta = {}) => {
     if (shouldLog(LOG_LEVELS.DEBUG)) {
-      logToConsole('debug', colors.blue, message, meta);
+      logToConsole("debug", colors.blue, message, meta);
     }
   },
-  
+
   /**
    * Log request details
    * @param {Object} req - Express request object
@@ -127,11 +129,16 @@ const logger = {
         url: req.originalUrl || req.url,
         ip: req.ip,
         status: res.statusCode,
-        userAgent: req.headers['user-agent'],
+        userAgent: req.headers["user-agent"],
         userId: req.user?.id,
       };
-      
-      logToConsole('http', colors.cyan, `${req.method} ${req.originalUrl || req.url}`, meta);
+
+      logToConsole(
+        "http",
+        colors.cyan,
+        `${req.method} ${req.originalUrl || req.url}`,
+        meta
+      );
     }
   },
 };

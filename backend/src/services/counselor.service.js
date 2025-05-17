@@ -1,8 +1,9 @@
-import { getFirestore } from "firebase-admin/firestore";
 import { UserRole } from "./auth.service.js";
-import { db } from "../config/firebase.config.js";
+import { admin, db } from "../config/firebase.config.js";
+import logger from "../utils/logger.js";
 
-const counselorDb = getFirestore();
+// Use the admin.db instance that's already initialized
+const counselorDb = admin.db;
 
 export class CounselorService {
   async getCounselorProfile(uid) {
@@ -12,10 +13,14 @@ export class CounselorService {
         .doc(uid)
         .get();
       if (!counselorDoc.exists) {
+        logger.warn(`Counselor not found: ${uid}`);
         throw new Error("Counselor not found");
       }
       return { uid, ...counselorDoc.data() };
     } catch (error) {
+      logger.error(`Failed to get counselor profile: ${error.message}`, {
+        uid,
+      });
       throw new Error(`Failed to get counselor profile: ${error.message}`);
     }
   }

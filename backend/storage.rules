@@ -7,9 +7,16 @@ service firebase.storage {
       return request.auth != null;
     }
 
-    function isAdmin() {
+    function isSuperAdmin() {
       return isAuthenticated() &&
-        exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+        exists(/databases/$(database)/documents/superadmins/$(request.auth.uid));
+    }
+
+    function isAdmin() {
+      // Superadmins have admin privileges
+      return isAuthenticated() &&
+        (exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+         isSuperAdmin());
     }
 
     function isCounselor() {
@@ -22,6 +29,23 @@ service firebase.storage {
         request.auth.uid == userId;
     }
 
+    // Validate file size
+    function isValidFileSize(maxSizeMB) {
+      return request.resource.size <= maxSizeMB * 1024 * 1024;
+    }
+
+    // Validate image file
+    function isImageFile() {
+      return request.resource.contentType.matches('image/.*');
+    }
+
+    // Validate document file
+    function isDocumentFile() {
+      return request.resource.contentType.matches('application/pdf') ||
+             request.resource.contentType.matches('application/msword') ||
+             request.resource.contentType.matches('application/vnd.openxmlformats-officedocument.*');
+    }
+
     // Default deny all
     match /{allPaths=**} {
       allow read, write: if false;
@@ -32,8 +56,13 @@ service firebase.storage {
       // Users can read their own profile images, admins can read all
       allow read: if isOwner(userId) || isAdmin();
 
-      // Users can upload their own profile images, admins can upload for anyone
-      allow write: if isOwner(userId) || isAdmin();
+      // Users can upload their own profile images with validation, admins can upload for anyone
+      allow write: if (isOwner(userId) &&
+                      isImageFile() &&
+                      isValidFileSize(2)) || // 2MB max for regular users
+                     (isAdmin() &&
+                      isImageFile() &&
+                      isValidFileSize(5)); // 5MB max for admins
     }
 
     // Counselor profile images and credentials
@@ -73,8 +102,41 @@ service firebase.storage {
       // Anyone can read public resources
       allow read: if true;
 
-      // Only admins can upload public resources
-      allow write: if isAdmin();
+      // Only admins can upload public resources with validation
+      allow write: if isAdmin() &&
+                    (isImageFile() || isDocumentFile()) &&
+                    isValidFileSize(10); // 10MB max for public resources
+    }
+
+    // Merch product images
+    match /merch/{productId}/{fileName} {
+      // Anyone can view merch images
+      allow read: if true;
+
+      // Only admins can upload merch images with validation
+      allow write: if isAdmin() &&
+                    isImageFile() &&
+                    isValidFileSize(5); // 5MB max for merch images
+    }
+
+    // Event images and documents
+    match /events/{eventId}/{fileName} {
+      // Anyone can view event images
+      allow read: if true;
+
+      // Only admins can upload event images with validation
+      allow write: if isAdmin() &&
+                    (isImageFile() || isDocumentFile()) &&
+                    isValidFileSize(10); // 10MB max for event files
+    }
+
+    // Admin-only files
+    match /admin/{fileName} {
+      // Only admins can read admin files
+      allow read: if isAdmin();
+
+      // Only superadmins can upload admin files
+      allow write: if isSuperAdmin() && isValidFileSize(20); // 20MB max for admin files
     }
   }
 }

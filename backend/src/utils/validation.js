@@ -1,4 +1,5 @@
 import { createError } from "./error.js";
+import config from "../config/config.js";
 
 export const validateRequest = (req, schema) => {
   const errors = [];
@@ -64,6 +65,18 @@ export const validateRequest = (req, schema) => {
     if (rules.type === "string" && rules.email && !isValidEmail(value)) {
       errors.push(`${field} must be a valid email address`);
     }
+
+    // Check email domain if specified
+    if (
+      rules.type === "string" &&
+      rules.emailDomain &&
+      !isValidEmailDomain(value)
+    ) {
+      const allowedDomains = config.arcjet.allowedEmailDomains.join(", ");
+      errors.push(
+        `${field} must use an authorized email domain (${allowedDomains})`
+      );
+    }
   }
 
   if (errors.length > 0) {
@@ -74,4 +87,67 @@ export const validateRequest = (req, schema) => {
 const isValidEmail = (email) => {
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   return emailRegex.test(email);
+};
+
+const isValidEmailDomain = (email) => {
+  if (!isValidEmail(email)) return false;
+
+  const domain = email.split("@")[1].toLowerCase();
+  return config.arcjet.allowedEmailDomains.includes(domain);
+};
+
+/**
+ * Validates a password
+ * @param {string} password - Password to validate
+ * @returns {Object} - Validation result with isValid flag and error message
+ */
+export const validatePassword = (password) => {
+  // Password must be at least 8 characters
+  if (!password || password.length < 8) {
+    return {
+      isValid: false,
+      message: "Password must be at least 8 characters long",
+    };
+  }
+
+  // Password must contain at least one uppercase letter
+  const hasUppercase = /[A-Z]/.test(password);
+  if (!hasUppercase) {
+    return {
+      isValid: false,
+      message: "Password must include at least one uppercase letter",
+    };
+  }
+
+  // Password must contain at least one lowercase letter
+  const hasLowercase = /[a-z]/.test(password);
+  if (!hasLowercase) {
+    return {
+      isValid: false,
+      message: "Password must include at least one lowercase letter",
+    };
+  }
+
+  // Password must contain at least one number
+  const hasNumber = /[0-9]/.test(password);
+  if (!hasNumber) {
+    return {
+      isValid: false,
+      message: "Password must include at least one number",
+    };
+  }
+
+  // Password must contain at least one special character
+  const hasSpecial = /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password);
+  if (!hasSpecial) {
+    return {
+      isValid: false,
+      message: "Password must include at least one special character",
+    };
+  }
+
+  return {
+    isValid: true,
+    message: "Password is valid",
+  };
 };
