@@ -97,7 +97,152 @@ npm test
 npm run test:coverage
 ```
 
-## API Response Format
+## API Documentation
+
+### API Endpoints
+
+Below is a comprehensive list of all available endpoints in the API:
+
+#### Authentication Endpoints (`/auth`)
+
+| Method | Endpoint               | Description                             | Auth Required |
+|--------|------------------------|-----------------------------------------|--------------|
+| POST   | /auth/register         | Register a new user                     | No           |
+| POST   | /auth/token-register   | Register with OAuth token               | No           |
+| POST   | /auth/login            | Login user                              | No           |
+| POST   | /auth/verify-token     | Verify authentication token             | No           |
+| POST   | /auth/refresh-token    | Refresh the authentication token        | No           |
+| GET    | /auth/me               | Get current user information            | Yes          |
+| PUT    | /auth/me               | Update current user information         | Yes          |
+| DELETE | /auth/me               | Delete current user account             | Yes          |
+| POST   | /auth/logout           | Logout user                             | No           |
+| POST   | /auth/forgot-password  | Request password reset                  | No           |
+| POST   | /auth/reset-password   | Reset password with token               | No           |
+| POST   | /auth/change-password  | Change user password                    | Yes          |
+| POST   | /auth/verify-email     | Verify user email                       | No           |
+| PUT    | /auth/role/:userId     | Update user role (admin only)           | Yes (Admin)  |
+| GET    | /auth/test             | Test authentication routes              | No           |
+
+#### User Endpoints (`/users`)
+
+| Method | Endpoint               | Description                             | Auth Required |
+|--------|------------------------|-----------------------------------------|--------------|
+| GET    | /users/profile/:userId | Get user profile                        | Yes          |
+| PUT    | /users/profile/:userId | Update user profile                     | Yes          |
+| PUT    | /users/preferences     | Update user preferences                 | Yes          |
+| DELETE | /users/:userId         | Delete user                             | Yes          |
+| GET    | /users/search          | Search users                            | Yes          |
+
+#### Event Endpoints (`/events`)
+
+| Method | Endpoint               | Description                             | Auth Required |
+|--------|------------------------|-----------------------------------------|--------------|
+| GET    | /events                | Get all events                          | No           |
+| GET    | /events/:id            | Get event by ID                         | No           |
+| POST   | /events/seed           | Seed events data                        | Yes (Admin)  |
+
+#### Admin Endpoints (`/admin`)
+
+| Method | Endpoint                          | Description                      | Auth Required |
+|--------|-----------------------------------|----------------------------------|--------------|
+| GET    | /admin/stats                      | Get system statistics            | Yes (Admin)  |
+| GET    | /admin/users/count                | Get user count                   | Yes (Admin)  |
+| GET    | /admin/counselors/count           | Get counselor count              | Yes (Admin)  |
+| GET    | /admin/messages/count             | Get message count                | Yes (Admin)  |
+| POST   | /admin/events/roles               | Assign event role                | Yes (Admin)  |
+| GET    | /admin/events/roles/user/:userId  | Get user roles                   | Yes (Admin)  |
+| GET    | /admin/events/roles/event/:eventId| Get event roles                  | Yes (Admin)  |
+| POST   | /admin/events/roles/process-expired| Process expired roles          | Yes (Admin)  |
+| GET    | /admin/events/roles/legacy        | Get legacy roles                 | Yes (Admin)  |
+| POST   | /admin/events                     | Create event                     | Yes (Admin)  |
+| PUT    | /admin/events/:eventId            | Update event                     | Yes (Admin)  |
+
+#### Superadmin Endpoints (`/superadmin`)
+
+| Method | Endpoint                    | Description                         | Auth Required    |
+|--------|-----------------------------|-------------------------------------|------------------|
+| POST   | /superadmin/add             | Add superadmin                      | Yes (SuperAdmin) |
+| POST   | /superadmin/remove          | Remove superadmin                   | Yes (SuperAdmin) |
+| GET    | /superadmin/list            | List all superadmins                | Yes (SuperAdmin) |
+| GET    | /superadmin/check/:userId   | Check if user is superadmin         | Yes (SuperAdmin) |
+
+#### Team Endpoints (`/teams`)
+
+| Method | Endpoint               | Description                             | Auth Required |
+|--------|------------------------|-----------------------------------------|--------------|
+| GET    | /teams                 | Get all team members                    | No           |
+| GET    | /teams/type/:type      | Get team members by type                | No           |
+| GET    | /teams/batch/:batch    | Get team members by batch               | No           |
+| GET    | /teams/:id             | Get team member by ID                   | No           |
+| POST   | /teams/seed            | Seed teams data                         | Yes (Admin)  |
+
+#### Chat Endpoints (`/chat`)
+
+| Method | Endpoint               | Description                             | Auth Required |
+|--------|------------------------|-----------------------------------------|--------------|
+| POST   | /chat/message          | Send a message                          | Yes          |
+| GET    | /chat/history/:userId  | Get chat history with a user            | Yes          |
+| GET    | /chat/unread           | Get unread messages                     | Yes          |
+| PUT    | /chat/read/:senderId   | Mark messages as read                   | Yes          |
+
+#### Counselor Endpoints (`/counselors`)
+
+| Method | Endpoint                     | Description                       | Auth Required |
+|--------|------------------------------|-----------------------------------|--------------|
+| POST   | /counselors/:userId          | Create counselor profile          | Yes (Admin)  |
+| PUT    | /counselors/availability/:userId | Update counselor availability | Yes (Counselor) |
+| PUT    | /counselors/rating/:userId   | Update counselor rating           | Yes          |
+| GET    | /counselors/search           | Search counselors                 | Yes          |
+| GET    | /counselors/available        | Get available counselors          | Yes          |
+
+#### Merchandise Endpoints (`/merch`)
+
+| Method | Endpoint               | Description                             | Auth Required |
+|--------|------------------------|-----------------------------------------|--------------|
+| GET    | /merch/products        | Get all merchandise products            | No           |
+| GET    | /merch/sales           | Get current merchandise sale            | No           |
+| POST   | /merch/order           | Submit merchandise order                | Yes          |
+
+#### Health Check Endpoints (`/health`)
+
+| Method | Endpoint               | Description                             | Auth Required |
+|--------|------------------------|-----------------------------------------|--------------|
+| GET    | /health                | Basic health check                      | No           |
+| GET    | /health/detailed       | Detailed health status                  | Yes (Admin)  |
+| GET    | /health/security       | Security health status                  | Yes (Admin)  |
+
+#### OAuth Endpoints (`/oauth`)
+
+| Method | Endpoint               | Description                             | Auth Required |
+|--------|------------------------|-----------------------------------------|--------------|
+| POST   | /oauth/google          | Google OAuth sign-in                    | No           |
+
+#### Arcjet Security Endpoints (`/api`)
+
+| Method | Endpoint               | Description                             | Auth Required |
+|--------|------------------------|-----------------------------------------|--------------|
+| POST   | /api/arcjet-protect    | Frontend security protection            | No           |
+
+#### Root Endpoints
+
+| Method | Endpoint               | Description                             | Auth Required |
+|--------|------------------------|-----------------------------------------|--------------|
+| GET    | /                      | Redirects to health check               | No           |
+| GET    | /api-test              | Test API connectivity                   | No           |
+| POST   | /register              | Direct registration fallback            | No           |
+| POST   | /verify-token          | Direct token verification fallback      | No           |
+| POST   | /google-auth           | Direct Google auth fallback             | No           |
+
+### Authentication Methods
+
+The backend supports two authentication methods:
+
+1. **Backend Authentication (Legacy)**: JWT tokens generated by the backend
+2. **Client-Side Authentication (Recommended)**: Firebase ID tokens generated by the Firebase client SDK
+
+The backend automatically detects which authentication method is being used and validates the token accordingly. This allows for a smooth transition from backend to client-side authentication.
+
+### API Response Format
 
 The API supports two response formats:
 
@@ -131,8 +276,6 @@ The backend provides several response utilities:
 - `errorResponse(res, message, statusCode, errorCode)`: Standard error response
 - `paginatedResponse(res, data, page, limit, total, message)`: Paginated response
 - `compatResponse(req, res, data, message, statusCode)`: Format-aware response
-
-## API Documentation
 
 ### Authentication
 
@@ -313,15 +456,6 @@ The API uses Arcjet for rate limiting. Default limits:
 - Input validation is enforced
 - CORS is configured
 - Helmet is used for security headers
-
-### Authentication Methods
-
-The backend supports two authentication methods:
-
-1. **Backend Authentication (Legacy)**: JWT tokens generated by the backend
-2. **Client-Side Authentication (Recommended)**: Firebase ID tokens generated by the Firebase client SDK
-
-The backend automatically detects which authentication method is being used and validates the token accordingly. This allows for a smooth transition from backend to client-side authentication.
 
 ### Firebase Authentication Security
 

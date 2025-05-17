@@ -343,6 +343,47 @@ app.post("/register", (req, res, next) => {
   authController.register(req, res, next);
 });
 
+// Add direct route for OAuth registration as a fallback
+app.options("/oauth-register", (req, res) => {
+  res.header("Access-Control-Allow-Origin", req.headers.origin || "*");
+  res.header("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.header(
+    "Access-Control-Allow-Headers",
+    "Content-Type, Authorization, x-request-id, x-request-timestamp, x-requested-with, accept, origin, cache-control, x-api-key"
+  );
+  res.header("Access-Control-Allow-Credentials", "true");
+  res.header("Access-Control-Max-Age", "86400"); // 24 hours
+  res.status(204).end();
+
+  logger.debug("OPTIONS request for direct OAuth register endpoint", {
+    origin: req.headers.origin,
+    path: req.path,
+  });
+});
+
+app.post("/oauth-register", (req, res, next) => {
+  logger.info("Direct OAuth register endpoint accessed");
+
+  // Set CORS headers for this specific route
+  res.header("Access-Control-Allow-Origin", req.headers.origin || "*");
+  res.header("Access-Control-Allow-Credentials", "true");
+
+  // Log request details for debugging
+  logger.debug("Direct OAuth registration request received", {
+    origin: req.headers.origin,
+    path: req.path,
+    method: req.method,
+    ip: req.ip,
+    userAgent: req.headers["user-agent"],
+    hasIdToken: !!req.body.idToken,
+    hasEmail: !!req.body.email,
+    provider: req.body.provider || "unknown"
+  });
+
+  // Forward to the auth controller's OAuth register method
+  authController.oauthRegister(req, res, next);
+});
+
 // Root route redirects to health check
 app.get("/", (_, res) => {
   res.redirect("/health");

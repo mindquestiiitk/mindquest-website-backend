@@ -78,6 +78,18 @@ router.post(
   authController.register
 );
 
+// Route specifically for OAuth registration (Google, Facebook, etc.)
+router.post(
+  "/oauth-register",
+  arcjetProtection,
+  (req, res, next) => {
+    // Skip standard validation for OAuth users since they don't have passwords
+    logger.info("OAuth registration route accessed, skipping password validation");
+    next();
+  },
+  authController.oauthRegister
+);
+
 router.post(
   "/login",
   arcjetProtection, // This already includes bot protection and rate limiting

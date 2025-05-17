@@ -243,6 +243,137 @@ export class AuthController {
   });
 
   /**
+   * Register OAuth user (skip password validation)
+   * This endpoint is specifically designed for users authenticating through OAuth providers
+   */
+  oauthRegister = catchAsync(async (req, res, next) => {
+    try {
+      const { idToken, email, name, provider, deviceInfo, photoURL } = req.body;
+
+      if (!idToken) {
+        return res.status(400).json({
+          success: false,
+          error: {
+            message: "ID token is required for OAuth registration",
+            code: "missing_token"
+          }
+        });
+      }
+
+      logger.info("OAuth registration attempt", {
+        provider: provider || "unknown",
+        hasEmail: !!email,
+        hasName: !!name,
+        ipAddress: req.ip,
+        userAgent: req.headers["user-agent"]?.substring(0, 100),
+      });
+
+      // Verify the token with Firebase
+      const decodedToken = await this.authService.auth.verifyIdToken(idToken);
+      
+      if (!decodedToken.uid) {
+        return res.status(401).json({
+          success: false,
+          error: {
+            message: "Invalid authentication token",
+            code: "invalid_token",
+          }
+        });
+      }
+
+      // Check if user already exists in Firestore
+      const userDoc = await this.authService.usersCollection.doc(decodedToken.uid).get();
+      
+      if (userDoc.exists) {
+        logger.info("OAuth user already exists during registration", {
+          userId: decodedToken.uid,
+          email: decodedToken.email,
+          provider: provider || decodedToken.firebase?.sign_in_provider || "oauth",
+        });
+
+        // Ensure user profile and role collections are properly set up
+        await this.authService.ensureUserProfile(decodedToken.uid, {
+          email: email || decodedToken.email,
+          name: name || decodedToken.name || decodedToken.email?.split('@')[0] || "User",
+          provider: provider || decodedToken.firebase?.sign_in_provider || "oauth",
+          emailVerified: decodedToken.email_verified,
+          photoURL: photoURL || decodedToken.picture, 
+        });
+
+        // Create or update session
+        await this.authService.ensureUserSession(
+          decodedToken.uid,
+          deviceInfo || {}
+        );
+
+        // Get updated user data
+        const userData = await this.authService.getUserById(decodedToken.uid);
+
+        // Generate token and create session
+        const authToken = await this.authService.generateSecureToken(
+          decodedToken.uid,
+          userData,
+          deviceInfo || {}
+        );
+
+        return res.status(200).json({
+          success: true,
+          message: "User already registered",
+          user: userData,
+          token: authToken.token
+        });
+      }
+
+      // Create new user profile for OAuth user
+      const userData = await this.authService.ensureUserProfile(
+        decodedToken.uid,
+        {
+          email: email || decodedToken.email,
+          name: name || decodedToken.name || decodedToken.email?.split('@')[0] || "User",
+          provider: provider || decodedToken.firebase?.sign_in_provider || "oauth",
+          emailVerified: decodedToken.email_verified,
+          photoURL: photoURL || decodedToken.picture,
+          role: "user" // Default role for new users
+        }
+      );
+
+      // Create session
+      await this.authService.ensureUserSession(
+        decodedToken.uid,
+        deviceInfo || {}
+      );
+
+      // Generate token
+      const authToken = await this.authService.generateSecureToken(
+        decodedToken.uid,
+        userData,
+        deviceInfo || {}
+      );
+
+      logger.info("OAuth user registered successfully", {
+        userId: decodedToken.uid,
+        email: userData.email,
+        provider: userData.provider || "oauth"
+      });
+
+      return res.status(201).json({
+        success: true,
+        data: {
+          user: userData,
+          token: authToken.token
+        }
+      });
+    } catch (error) {
+      logger.error("OAuth registration error", {
+        error: error.message,
+        code: error.code,
+        stack: error.stack
+      });
+      next(error);
+    }
+  });
+
+  /**
    * Login with email and password
    */
   login = catchAsync(async (req, res, next) => {
