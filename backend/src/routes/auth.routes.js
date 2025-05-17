@@ -60,7 +60,21 @@ router.post(
   "/register",
   arcjetProtection, // This already includes bot protection and rate limiting
   emailDomainValidation, // Additional email domain validation
-  validateRequest(schemas.auth.register),
+  (req, res, next) => {
+    // Skip validation if using token-based registration
+    if (req.body.idToken || req.body.tokenBased) {
+      return next();
+    }
+    validateRequest(schemas.auth.register)(req, res, next);
+  },
+  authController.register
+);
+
+// Route specifically for token-based registration (OAuth providers)
+router.post(
+  "/token-register",
+  arcjetProtection,
+  emailDomainValidation,
   authController.register
 );
 

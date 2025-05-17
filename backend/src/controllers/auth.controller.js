@@ -36,6 +36,9 @@ export class AuthController {
       if (idToken || req.body.tokenBased) {
         // Firebase ID token registration (from client)
         try {
+          // Skip traditional password validation for OAuth/token-based registration
+          logger.info("Using token-based registration, skipping password validation");
+          
           // Get token from request body or Authorization header
           let tokenToVerify = idToken;
 
@@ -178,7 +181,7 @@ export class AuthController {
 
           // Validate password strength
           const { validatePassword } = await import("../utils/validation.js");
-          const passwordValidation = validatePassword(password);
+          const passwordValidation = validatePassword(password, 'password');
 
           if (!passwordValidation.isValid) {
             return res.status(400).json({

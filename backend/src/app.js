@@ -27,6 +27,7 @@ import userRoutes from "./routes/user.routes.js";
 import chatRoutes from "./routes/chat.routes.js";
 import counselorRoutes from "./routes/counselor.routes.js";
 import arcjetRoutes from "./routes/arcjet.routes.js";
+import oauthRoutes from "./routes/oauth.routes.js";
 
 const app = express();
 const httpServer = createServer(app);
@@ -213,6 +214,7 @@ app.use("/users", userRoutes);
 app.use("/chat", chatRoutes);
 app.use("/counselors", counselorRoutes);
 app.use("/api", arcjetRoutes);
+app.use("/oauth", oauthRoutes);
 
 // Add OPTIONS handler for the direct verify-token endpoint
 app.options("/verify-token", (req, res) => {
@@ -266,6 +268,38 @@ app.post("/verify-token", (req, res, next) => {
 
   // Forward to the auth controller
   authController.verifyToken(req, res, next);
+});
+
+// Add direct route for Google OAuth sign-in
+app.options("/google-auth", (req, res) => {
+  res.header("Access-Control-Allow-Origin", req.headers.origin || "*");
+  res.header("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.header(
+    "Access-Control-Allow-Headers",
+    "Content-Type, Authorization, x-request-id, x-request-timestamp, x-requested-with, accept, origin, cache-control, x-api-key"
+  );
+  res.header("Access-Control-Allow-Credentials", "true");
+  res.header("Access-Control-Max-Age", "86400"); // 24 hours
+  res.status(204).end();
+
+  logger.debug("OPTIONS request for direct Google OAuth endpoint", {
+    origin: req.headers.origin,
+    path: req.path,
+  });
+});
+
+// Import OAuth controller for direct route
+import { oAuthController } from "./controllers/oauth.controller.js";
+
+app.post("/google-auth", (req, res, next) => {
+  logger.info("Direct Google OAuth endpoint accessed");
+
+  // Set CORS headers for this specific route
+  res.header("Access-Control-Allow-Origin", req.headers.origin || "*");
+  res.header("Access-Control-Allow-Credentials", "true");
+
+  // Forward to the OAuth controller
+  oAuthController.handleGoogleSignIn(req, res, next);
 });
 
 // Add direct route for registration as a fallback

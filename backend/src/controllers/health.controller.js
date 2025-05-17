@@ -8,8 +8,15 @@ import { db } from "../config/firebase.config.js";
 import { catchAsync } from "../utils/error.js";
 import logger from "../utils/logger.js";
 import os from "os";
-import pkg from "../../package.json" assert { type: "json" };
+import { readFileSync } from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
 import { arcjet } from "../config/arcjet.config.js";
+
+// Get package.json data
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const pkg = JSON.parse(readFileSync(path.join(__dirname, '../../package.json'), 'utf8'));
 
 export class HealthController {
   /**

@@ -5,12 +5,12 @@
   "type": "module",
   "main": "src/app.js",
   "scripts": {
-    "start": "cls && node src/app.js",
-    "dev": "cls && nodemon src/app.js",
-    "test": "cls && node --experimental-vm-modules node_modules/jest/bin/jest.js",
-    "test:watch": "cls && node --experimental-vm-modules node_modules/jest/bin/jest.js --watch",
-    "test:coverage": "cls && node --experimental-vm-modules node_modules/jest/bin/jest.js --coverage",
-    "test:ci": "cls && node --experimental-vm-modules node_modules/jest/bin/jest.js --ci --coverage --runInBand",
+    "start": "clear && node src/app.js",
+    "dev": "clear && nodemon src/app.js",
+    "test": "clear && node --experimental-vm-modules node_modules/jest/bin/jest.js",
+    "test:watch": "clear && node --experimental-vm-modules node_modules/jest/bin/jest.js --watch",
+    "test:coverage": "clear && node --experimental-vm-modules node_modules/jest/bin/jest.js --coverage",
+    "test:ci": "clear && node --experimental-vm-modules node_modules/jest/bin/jest.js --ci --coverage --runInBand",
     "setup:firebase": "node scripts/setup-firebase.js",
     "seed:data": "node scripts/seed-data.js"
   },

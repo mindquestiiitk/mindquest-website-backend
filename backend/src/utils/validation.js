@@ -99,9 +99,18 @@ const isValidEmailDomain = (email) => {
 /**
  * Validates a password
  * @param {string} password - Password to validate
+ * @param {string} provider - Authentication provider (e.g., 'password', 'google')
  * @returns {Object} - Validation result with isValid flag and error message
  */
-export const validatePassword = (password) => {
+export const validatePassword = (password, provider = 'password') => {
+  // Skip password validation for OAuth providers (google, apple, facebook, etc.)
+  if (provider !== 'password') {
+    return {
+      isValid: true,
+      message: "Password validation skipped for OAuth provider",
+    };
+  }
+
   // Password must be at least 8 characters
   if (!password || password.length < 8) {
     return {
