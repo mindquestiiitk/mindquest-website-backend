@@ -1,0 +1,312 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isSuperAdmin() {
+      // Collection-based security: check if user exists in superadmins collection
+      return isAuthenticated() &&
+        exists(/databases/$(database)/documents/superadmins/$(request.auth.uid));
+    }
+
+    function isAdmin() {
+      // Collection-based security: check if user exists in admins collection
+      // Superadmins have admin privileges
+      return isAuthenticated() &&
+        (exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+         isSuperAdmin());
+    }
+
+    function isCounselor() {
+      // Collection-based security: check if user exists in counselors collection
+      return isAuthenticated() &&
+        exists(/databases/$(database)/documents/counselors/$(request.auth.uid));
+    }
+
+    function isUser() {
+      // Collection-based security: check if user exists in users collection
+      // Simplified to just check if the user exists in the users collection
+      return isAuthenticated() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function isOwner(userId) {
+      // Check if the authenticated user is the owner of the document
+      return isAuthenticated() &&
+        request.auth.uid == userId;
+    }
+
+    function isDocumentOwner() {
+      // Check if the authenticated user is the owner of the document
+      return isAuthenticated() &&
+        request.auth.uid == resource.data.userId;
+    }
+
+    function hasValidSession() {
+      // Collection-based security: check if user has a valid session
+      // Using the user's UID as the session document ID for better security
+      return isAuthenticated() &&
+        exists(/databases/$(database)/documents/sessions/$(request.auth.uid));
+    }
+
+    // Check if the request is coming from the same user as the document ID
+    function isRequestFromSameUser(docId) {
+      return isAuthenticated() && request.auth.uid == docId;
+    }
+
+    // Rate limiting helper - prevents too many writes in a short period
+    function notRateLimited() {
+      return isAuthenticated() &&
+        (!exists(/databases/$(database)/documents/users/$(request.auth.uid)/rateLimit/writes) ||
+        request.time > resource.data.resetTime);
+    }
+
+    function isValidUser() {
+      return request.resource.data.keys().hasAll(['email', 'role', 'createdAt', 'updatedAt']) &&
+        request.resource.data.role in ['user', 'counselor', 'admin', 'superadmin'];
+    }
+
+    function isValidEmail(email) {
+      return email.matches('^[^@]+@[^@]+\\.[^@]+$');
+    }
+
+    function isValidPassword(password) {
+      // Password must be at least 6 characters
+      return password.size() >= 6;
+    }
+
+    function isValidName(name) {
+      // Name must be between 5 and 50 characters
+      return name.size() >=  5 && name.size() <= 50;
+    }
+
+    // Default deny all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Users collection - using collection-based security
+    match /users/{userId} {
+      // Users can read their own profile
+      // Using isRequestFromSameUser for collection-based security
+      allow read: if isRequestFromSameUser(userId) || isAdmin() || hasValidSession();
+
+      // Allow users to create their own profile and admins to create any profile
+      // Also allow backend service to create users
+      allow create: if (isRequestFromSameUser(userId) &&
+                       isValidEmail(request.resource.data.email)) ||
+                      (isAdmin() && isValidUser() &&
+                       isValidEmail(request.resource.data.email) &&
+                       isValidName(request.resource.data.name)) ||
+                      // Allow backend service to create users
+                      (request.auth.token.firebase.sign_in_provider == 'custom');
+
+      // Users can update their own profile, admins can update any profile
+      // Using isRequestFromSameUser for collection-based security
+      allow update: if (isRequestFromSameUser(userId) &&
+                        // Users cannot change their own role
+                        request.resource.data.role == resource.data.role &&
+                        (!request.resource.data.keys().hasAny(['email']) ||
+                          isValidEmail(request.resource.data.email)) &&
+                        (!request.resource.data.keys().hasAny(['name']) ||
+                          isValidName(request.resource.data.name))) ||
+                       isAdmin();
+
+      // Only admins or the user themselves can delete their profile
+      allow delete: if isAdmin() || isRequestFromSameUser(userId);
+    }
+
+    // Counselors collection
+    match /counselors/{counselorId} {
+      // Users can read counselor profiles
+      allow read: if isAuthenticated();
+
+      // Only admins can create counselor profiles
+      allow create: if isAdmin();
+
+      // Counselors can update their own profile, admins can update any profile
+      allow update: if (isAuthenticated() &&
+                        resource.data.userId == request.auth.uid) ||
+                       isAdmin();
+
+      // Only admins can delete counselor profiles
+      allow delete: if isAdmin();
+    }
+
+    // Messages collection
+    match /messages/{messageId} {
+      // Users can read messages they sent or received
+      allow read: if isAuthenticated() &&
+                    (resource.data.senderId == request.auth.uid ||
+                     resource.data.receiverId == request.auth.uid);
+
+      // Users can create messages with validation
+      allow create: if isAuthenticated() &&
+                      request.resource.data.senderId == request.auth.uid &&
+                      request.resource.data.timestamp is timestamp &&
+                      request.resource.data.keys().hasAll(['senderId', 'receiverId', 'content', 'timestamp']) &&
+                      request.resource.data.content.size() > 0 &&
+                      request.resource.data.content.size() <= 5000;
+
+      // Users can update messages they sent (e.g., to mark as deleted or read)
+      allow update: if isAuthenticated() &&
+                      resource.data.senderId == request.auth.uid &&
+                      // Prevent changing critical fields
+                      request.resource.data.senderId == resource.data.senderId &&
+                      request.resource.data.receiverId == resource.data.receiverId &&
+                      request.resource.data.timestamp == resource.data.timestamp;
+
+      // Users can delete their own messages
+      allow delete: if isAuthenticated() &&
+                      resource.data.senderId == request.auth.uid;
+    }
+
+    // Events collection
+    match /events/{eventId} {
+      // All authenticated users can read events
+      allow read: if isAuthenticated();
+
+      // Only admins can create, update, or delete events
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Settings collection
+    match /settings/{settingId} {
+      // All authenticated users can read settings
+      allow read: if isAuthenticated();
+
+      // Only superadmins can modify system settings
+      allow create, update, delete: if isSuperAdmin();
+    }
+
+    // Logs collection
+    match /logs/{logId} {
+      // Admins can read logs, but only superadmins can modify them
+      allow read: if isAdmin();
+      allow write: if isSuperAdmin();
+    }
+
+    // Analytics collection
+    match /analytics/{analyticsId} {
+      // Admins can read analytics, but only superadmins can modify them
+      allow read: if isAdmin();
+      allow write: if isSuperAdmin();
+    }
+
+    // Admins collection
+    match /admins/{adminId} {
+      // Only admins can read admin records, but only superadmins can modify them
+      allow read: if isAdmin();
+      allow write: if isSuperAdmin();
+    }
+
+    // Superadmins collection
+    match /superadmins/{superadminId} {
+      // Only superadmins can read, create, update, or delete superadmin records
+      allow read, write: if isSuperAdmin();
+    }
+
+    // Sessions collection - using collection-based security
+    match /sessions/{sessionId} {
+      // Users can only read their own sessions
+      // The session document ID must match the user's UID
+      allow read: if isRequestFromSameUser(sessionId);
+
+      // Allow creation of sessions
+      allow create: if
+        // Allow creation if the session document ID matches the user's UID
+        // and the userId field also matches the user's UID
+        (isRequestFromSameUser(sessionId) &&
+         request.resource.data.userId == request.auth.uid) ||
+        // Or if it's the backend service
+        request.auth.token.firebase.sign_in_provider == 'custom';
+
+      // Allow updates to user's own sessions
+      allow update: if isRequestFromSameUser(sessionId);
+
+      // Allow deletion of user's own sessions or by backend service
+      allow delete: if isRequestFromSameUser(sessionId) ||
+                     request.auth.token.firebase.sign_in_provider == 'custom';
+    }
+
+    // Refresh tokens collection
+    match /refresh_tokens/{tokenId} {
+      // No client-side access to refresh tokens
+      allow read, write: if false;
+    }
+
+    // Event Roles collection
+    match /event_roles/{roleId} {
+      // All authenticated users can read event roles
+      allow read: if isAuthenticated();
+
+      // Only admins can create, update, or delete event roles
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Products collection
+    match /products/{productId} {
+      // Anyone can read products
+      allow read: if true;
+
+      // Only admins can create, update, or delete products
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Sales collection
+    match /sales/{saleId} {
+      // Anyone can read sales information
+      allow read: if true;
+
+      // Only admins can create, update, or delete sales
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Orders collection
+    match /orders/{orderId} {
+      // Users can read their own orders, admins can read all
+      allow read: if isAuthenticated() &&
+                   (resource.data.userId == request.auth.uid || isAdmin());
+
+      // Users can create their own orders
+      allow create: if isAuthenticated() &&
+                     request.resource.data.userId == request.auth.uid;
+
+      // Only admins can update or delete orders
+      allow update, delete: if isAdmin();
+    }
+
+    // Teams collection
+    match /teams/{teamId} {
+      // Anyone can read team information
+      allow read: if true;
+
+      // Only admins can create, update, or delete teams
+      allow create, update, delete: if isAdmin();
+    }
+
+    // No legacy collections - using collection ID-based security only
+
+    // Security events collection
+    match /security_events/{eventId} {
+      // Only admins can read security events
+      allow read: if isAdmin();
+
+      // Only the backend server can write security events
+      allow write: if false;
+    }
+
+    // System logs collection
+    match /system_logs/{logId} {
+      // Only superadmins can read system logs
+      allow read: if isSuperAdmin();
+
+      // Only the backend server can write system logs
+      allow write: if false;
+    }
+  }
+}
