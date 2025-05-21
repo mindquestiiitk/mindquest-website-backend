@@ -14,6 +14,9 @@ importers:
       '@dotenvx/dotenvx':
         specifier: ^0.8.0
         version: 0.8.4
+      cookie-parser:
+        specifier: ^1.4.7
+        version: 1.4.7
       cors:
         specifier: ^2.8.5
         version: 2.8.5
@@ -51,9 +54,6 @@ importers:
       chalk:
         specifier: ^5.4.1
         version: 5.4.1
-      cookie-parser:
-        specifier: ^1.4.7
-        version: 1.4.7
       jest:
         specifier: ^29.7.0
         version: 29.7.0(@types/node@22.15.12)
