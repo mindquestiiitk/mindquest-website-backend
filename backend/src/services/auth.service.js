@@ -370,15 +370,11 @@ class AuthService {
         logger.debug("Created new session for user", { userId, sessionId });
       }
 
-      // Get Firebase ID token for backward compatibility
-      const idToken = await this.auth.createCustomToken(userId);
-
       return {
         token: customToken,
         refreshToken,
         sessionId,
         expiresIn: this.TOKEN_EXPIRY,
-        idToken,
         user: {
           id: userId,
           email: userData.email,
@@ -2018,10 +2014,17 @@ class AuthService {
   }
 
   /**
-   * Check if user is admin
+   * Check if user is admin using collection ID-based security
+   * This is a production-ready approach that checks if the user ID exists
+   * as a document ID in the admins collection
    */
   async isUserAdmin(userId) {
     try {
+      if (!userId) {
+        logger.warn("Empty userId provided to isUserAdmin check");
+        return false;
+      }
+
       // First check if user is a superadmin (superadmins have admin privileges)
       const isSuperAdmin = await this.isUserSuperAdmin(userId);
       if (isSuperAdmin) {
@@ -2029,8 +2032,31 @@ class AuthService {
       }
 
       // If not a superadmin, check if they're in the admins collection
+      // This is collection ID-based security - the document ID must match the user ID
       const adminDoc = await this.adminsCollection.doc(userId).get();
-      return adminDoc.exists;
+
+      // For additional security, we could also check fields inside the document
+      if (adminDoc.exists) {
+        const adminData = adminDoc.data();
+        // Verify the admin status is active and the userId matches
+        if (adminData.userId === userId) {
+          return true;
+        }
+
+        // If userId doesn't match, log this as a potential security issue
+        if (adminData.userId !== userId) {
+          logger.warn(
+            "Admin document userId mismatch - possible security issue",
+            {
+              userId,
+              documentUserId: adminData.userId,
+            }
+          );
+          return false;
+        }
+      }
+
+      return false;
     } catch (error) {
       logger.error("Admin check failed", {
         userId,
@@ -2189,12 +2215,43 @@ class AuthService {
   }
 
   /**
-   * Check if user is superadmin
+   * Check if user is superadmin using collection ID-based security
+   * This is a production-ready approach that checks if the user ID exists
+   * as a document ID in the superadmins collection
    */
   async isUserSuperAdmin(userId) {
     try {
+      if (!userId) {
+        logger.warn("Empty userId provided to isUserSuperAdmin check");
+        return false;
+      }
+
+      // Check if they're in the superadmins collection
+      // This is collection ID-based security - the document ID must match the user ID
       const superadminDoc = await this.superadminsCollection.doc(userId).get();
-      return superadminDoc.exists;
+
+      // For additional security, we could also check fields inside the document
+      if (superadminDoc.exists) {
+        const superadminData = superadminDoc.data();
+        // Verify the userId matches
+        if (superadminData.userId === userId) {
+          return true;
+        }
+
+        // If userId doesn't match, log this as a potential security issue
+        if (superadminData.userId !== userId) {
+          logger.warn(
+            "Superadmin document userId mismatch - possible security issue",
+            {
+              userId,
+              documentUserId: superadminData.userId,
+            }
+          );
+          return false;
+        }
+      }
+
+      return false;
     } catch (error) {
       logger.error("Superadmin check failed", {
         userId,

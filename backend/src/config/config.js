@@ -35,10 +35,12 @@ const isProduction = nodeEnv === "production";
 const isTest = nodeEnv === "test";
 
 // Server configuration
-const port = parseInt(process.env.PORT || "5000", 10);
+const port = parseInt(process.env.PORT || "3001", 10); // Changed default port to 3001
 const host = process.env.HOST || "localhost";
-const baseUrl = process.env.BASE_URL || `http://${host}:${port}`;
-const clientUrl = process.env.CLIENT_URL || "http://localhost:5173";
+const baseUrl =
+  process.env.BACKEND_URL || process.env.BASE_URL || `http://${host}:${port}`;
+const clientUrl =
+  process.env.FRONTEND_URL || process.env.CLIENT_URL || "http://localhost:5173";
 
 // Firebase configuration
 // Using restricted access configuration without admin privileges
@@ -112,7 +114,6 @@ const sessionConfig = {
 
 // Security configuration
 const securityConfig = {
-  csrfTokenExpiry: parseInt(process.env.CSRF_TOKEN_EXPIRY || "60") * 60 * 1000, // Default 60 minutes in ms
   contentSecurityPolicy: {
     defaultSrc: ["'self'"],
     scriptSrc: ["'self'", "'unsafe-inline'"],

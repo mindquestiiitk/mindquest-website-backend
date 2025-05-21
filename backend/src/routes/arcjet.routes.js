@@ -70,73 +70,83 @@ router.post("/arcjet-protect", arcjetProtection, async (req, res) => {
     switch (options.action) {
       case "authentication":
         rules = [
-          arcjet.rateLimit({
+          {
             id: "auth-rate-limit",
             max: 5,
             period: "1m",
-          }),
-          arcjet.shield({
+          },
+          {
             id: "auth-bot-protection",
             action: "block",
-          }),
+          },
         ];
         break;
 
       case "registration":
         rules = [
-          arcjet.rateLimit({
+          {
             id: "registration-rate-limit",
             max: 3,
             period: "1m",
-          }),
-          arcjet.shield({
+          },
+          {
             id: "registration-bot-protection",
             action: "block",
-          }),
-          arcjet.emailGuard({
+          },
+          {
             id: "email-validation",
             allowedDomains: ["iiitkottayam.ac.in"],
-          }),
+          },
         ];
         break;
 
       case "password-reset":
         rules = [
-          arcjet.rateLimit({
+          {
             id: "password-reset-rate-limit",
             max: 3,
             period: "5m",
-          }),
-          arcjet.shield({
+          },
+          {
             id: "password-reset-bot-protection",
             action: "block",
-          }),
+          },
         ];
         break;
 
       case "form-submission":
         rules = [
-          arcjet.rateLimit({
+          {
             id: "form-submission-rate-limit",
             max: 10,
             period: "1m",
-          }),
-          arcjet.shield({
+          },
+          {
             id: "form-submission-bot-protection",
             action: "block",
-          }),
+          },
         ];
         break;
 
       default:
         // Default rules for any other action
         rules = [
-          arcjet.rateLimit({
+          {
             id: "default-rate-limit",
             max: 20,
             period: "1m",
-          }),
+          },
         ];
+    }
+
+    // Make sure we always have at least one rule (Shield rule) to avoid warnings
+    if (!rules || rules.length === 0) {
+      rules = [
+        {
+          id: "default-shield",
+          action: "monitor",
+        },
+      ];
     }
 
     // Apply Arcjet protection

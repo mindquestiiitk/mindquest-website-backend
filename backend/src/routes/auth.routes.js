@@ -203,7 +203,4 @@ router.put(
   authController.updateUserRole
 );
 
-// Firebase authentication already provides CSRF protection
-// No need for a separate CSRF token endpoint
-
 export default router;

@@ -73,7 +73,14 @@ export const arcjetProtection = async (req, res, next) => {
           method: req.method,
           headers: req.headers,
         },
-        { rules: [] }
+        {
+          rules: [
+            {
+              id: "fallback-shield",
+              action: "monitor",
+            },
+          ],
+        }
       );
 
       if (result.flagged) {
@@ -128,7 +135,7 @@ export const arcjetProtection = async (req, res, next) => {
     const result = await arcjet.protect(decisionReq, {
       rules: [
         // Rate limiting for authentication endpoints
-        arcjet.rateLimit({
+        {
           id: "auth-rate-limit",
           max: 5, // 5 requests
           period: "1m", // per minute
@@ -137,36 +144,36 @@ export const arcjetProtection = async (req, res, next) => {
             { path: "/auth/register" },
             { path: "/auth/reset-password" },
           ],
-        }),
+        },
 
         // More strict rate limiting for admin endpoints
-        arcjet.rateLimit({
+        {
           id: "admin-rate-limit",
           max: 20, // 20 requests
           period: "1m", // per minute
           match: [{ path: "/admin/*" }, { path: "/superadmin/*" }],
-        }),
+        },
 
         // General rate limiting for all other endpoints
-        arcjet.rateLimit({
+        {
           id: "general-rate-limit",
           max: 60, // 60 requests
           period: "1m", // per minute
           // No match means it applies to all routes not matched above
-        }),
+        },
 
         // Bot protection for all routes
-        arcjet.shield({
+        {
           id: "bot-protection",
           action: "block",
-        }),
+        },
 
         // Email validation for registration
-        arcjet.emailGuard({
+        {
           id: "email-validation",
           match: [{ path: "/auth/register" }],
           allowedDomains: config.arcjet.allowedEmailDomains || [],
-        }),
+        },
       ],
     });
 
@@ -305,7 +312,7 @@ export const emailDomainValidation = async (req, res, next) => {
       return next();
     }
 
-    // Apply only email validation rule
+    // Apply email validation rule and shield rule
     const result = await arcjet.protect(
       {
         ip: req.ip,
@@ -316,10 +323,14 @@ export const emailDomainValidation = async (req, res, next) => {
       },
       {
         rules: [
-          arcjet.emailGuard({
+          {
             id: "email-domain-validation",
             allowedDomains: config.arcjet.allowedEmailDomains || [],
-          }),
+          },
+          {
+            id: "email-shield",
+            action: "monitor",
+          },
         ],
       }
     );

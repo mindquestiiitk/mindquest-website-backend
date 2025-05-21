@@ -1,14 +1,12 @@
 import { Server } from "socket.io";
 import { auth } from "./firebase.config.js";
 import config from "./config.js";
+import { createSocketCorsConfig } from "./cors.config.js";
 
 export const initializeSocket = (server) => {
+  // Initialize Socket.IO with centralized CORS configuration
   const io = new Server(server, {
-    cors: {
-      origin: config.clientUrl,
-      methods: ["GET", "POST"],
-      credentials: true,
-    },
+    cors: createSocketCorsConfig(),
   });
 
   io.use(async (socket, next) => {

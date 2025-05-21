@@ -9,6 +9,10 @@ import { arcjetProtection } from "./middleware/arcjet.middleware.js";
 import { errorHandler } from "./middleware/error.middleware.js";
 import config from "./config/config.js";
 import logger from "./utils/logger.js";
+import {
+  createCorsConfig,
+  createSocketCorsConfig,
+} from "./config/cors.config.js";
 
 // Import modules
 import "./config/firebase.config.js";
@@ -31,96 +35,12 @@ import arcjetRoutes from "./routes/arcjet.routes.js";
 const app = express();
 const httpServer = createServer(app);
 
-app.use(
-  cors({
-    origin: function (origin, callback) {
-      // Allow requests with no origin (like mobile apps, curl, Postman)
-      if (!origin) {
-        logger.debug("CORS allowing request with no origin");
-        return callback(null, true);
-      }
+// Apply CORS middleware with centralized configuration
+app.use(cors(createCorsConfig()));
 
-      // Define allowed origins
-      const allowedOrigins = [
-        config.clientUrl,
-        "http://localhost:3000",
-        "http://localhost:5173",
-        "http://localhost:5174",
-        "http://localhost:8080",
-        "http://127.0.0.1:5173",
-        "http://127.0.0.1:3000",
-        // Add any additional origins needed
-      ];
-
-      // In development mode, allow all origins
-      if (allowedOrigins.includes(origin) || config.isDevelopment) {
-        logger.debug(`CORS allowing origin: ${origin}`);
-        callback(null, true);
-      } else {
-        logger.warn(`CORS blocked request from origin: ${origin}`);
-        callback(null, false);
-      }
-    },
-    credentials: true, // Important for cookies and authentication
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
-    allowedHeaders: [
-      "Content-Type",
-      "Authorization",
-      "x-request-id",
-      "x-token-expiring-soon",
-      "x-token-expires-in",
-      "x-csrf-token",
-      "x-requested-with",
-      "accept",
-      "origin",
-      "cache-control",
-      "x-api-key",
-      "x-request-timestamp",
-      "cookie", // Allow cookie header
-      "set-cookie", // Allow set-cookie header
-    ],
-    exposedHeaders: [
-      "x-request-id",
-      "x-token-expiring-soon",
-      "x-token-expires-in",
-      "x-request-timestamp",
-      "set-cookie", // Expose set-cookie header
-    ],
-    maxAge: 86400, // How long the results of a preflight request can be cached (in seconds) - 24 hours
-  })
-);
-
+// Initialize Socket.IO with centralized CORS configuration
 new Server(httpServer, {
-  cors: {
-    origin: [
-      config.clientUrl,
-      "http://localhost:3000",
-      "http://localhost:5173",
-      "http://localhost:5174",
-      "http://localhost:8080",
-      "http://127.0.0.1:5173",
-      "http://127.0.0.1:3000",
-      // Add any additional origins needed
-    ],
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
-    allowedHeaders: [
-      "Content-Type",
-      "Authorization",
-      "x-request-id",
-      "x-token-expiring-soon",
-      "x-token-expires-in",
-      "x-csrf-token",
-      "x-requested-with",
-      "accept",
-      "origin",
-      "cache-control",
-      "x-api-key",
-      "x-request-timestamp",
-      "cookie",
-      "set-cookie",
-    ],
-  },
+  cors: createSocketCorsConfig(),
 });
 
 app.use(
@@ -159,8 +79,16 @@ app.use(
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
-// Parse cookies
-app.use(cookieParser(config.cookieSecret || "mindquest-secret-key"));
+// Parse cookies with secure secret from environment variables
+// Generate a random secret if none is provided to avoid hardcoded values
+import crypto from "crypto";
+app.use(
+  cookieParser(
+    config.cookieSecret ||
+      process.env.COOKIE_SECRET ||
+      crypto.randomBytes(32).toString("hex")
+  )
+);
 
 // Apply Arcjet protection to all routes
 // This provides comprehensive security including rate limiting, bot protection, and more

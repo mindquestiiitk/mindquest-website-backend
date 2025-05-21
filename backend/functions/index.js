@@ -7,25 +7,10 @@
 
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
-const cors = require("cors")({
-  origin: true,
-  methods: ["GET", "POST", "OPTIONS"],
-  allowedHeaders: [
-    "Content-Type",
-    "Authorization",
-    "x-request-id",
-    "x-token-expiring-soon",
-    "x-token-expires-in",
-    "x-csrf-token",
-    "x-requested-with",
-    "accept",
-    "origin",
-    "cache-control",
-    "x-api-key",
-  ],
-  credentials: true,
-  maxAge: 86400, // 24 hours
-});
+const corsConfig = require("./cors.config");
+
+// Use the centralized CORS configuration
+const cors = require("cors")(corsConfig.createCorsConfig());
 
 // Initialize Firebase Admin SDK
 admin.initializeApp();

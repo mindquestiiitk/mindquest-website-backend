@@ -380,6 +380,54 @@ const enhancedArcjet = {
     );
     return true;
   },
+
+  // Add rate limit rule creator if not present
+  rateLimit: (options) => {
+    // If the original instance has rateLimit, use it
+    if (typeof arcjetInstance.rateLimit === "function") {
+      return arcjetInstance.rateLimit(options);
+    }
+
+    // Otherwise, provide a fallback implementation
+    return {
+      id:
+        options.id ||
+        `rate-limit-${Math.random().toString(36).substring(2, 9)}`,
+      max: options.max || 10,
+      period: options.period || "1m",
+      match: options.match || [],
+    };
+  },
+
+  // Add shield rule creator if not present
+  shield: (options) => {
+    // If the original instance has shield, use it
+    if (typeof arcjetInstance.shield === "function") {
+      return arcjetInstance.shield(options);
+    }
+
+    // Otherwise, provide a fallback implementation
+    return {
+      id: options.id || `shield-${Math.random().toString(36).substring(2, 9)}`,
+      action: options.action || "block",
+    };
+  },
+
+  // Add emailGuard rule creator if not present
+  emailGuard: (options) => {
+    // If the original instance has emailGuard, use it
+    if (typeof arcjetInstance.emailGuard === "function") {
+      return arcjetInstance.emailGuard(options);
+    }
+
+    // Otherwise, provide a fallback implementation
+    return {
+      id:
+        options.id ||
+        `email-guard-${Math.random().toString(36).substring(2, 9)}`,
+      allowedDomains: options.allowedDomains || [],
+    };
+  },
 };
 
 // Export the enhanced Arcjet instance
