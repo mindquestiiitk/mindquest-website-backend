@@ -39,6 +39,14 @@ function getErrorMessage(reason) {
       return "Your request has been blocked by our security system. If you believe this is an error, please contact support.";
     case "WAF":
       return "Your request contains potentially harmful content and has been blocked.";
+    case "GEO_BLOCKED":
+      return "Access from your location is not permitted. This service is only available in India.";
+    case "CONTENT_FILTERED":
+      return "Your message contains inappropriate content. Please revise and try again.";
+    case "SPAM_DETECTED":
+      return "Spam content detected. Please ensure your message is appropriate.";
+    case "ABUSE_DETECTED":
+      return "Abusive content detected. Please maintain respectful communication.";
     default:
       return "Your request cannot be processed at this time. Please try again later.";
   }
@@ -134,51 +142,105 @@ export const arcjetProtection = async (req, res, next) => {
     // Apply Arcjet protection with appropriate rules
     const result = await arcjet.protect(decisionReq, {
       rules: [
-        // Rate limiting for authentication endpoints
+        // Enhanced rate limiting for authentication endpoints
         {
           id: "auth-rate-limit",
-          max: 5, // 5 requests
+          max:
+            req.user?.role === "admin" || req.user?.role === "superadmin"
+              ? 15
+              : 5, // Higher limits for admins
           period: "1m", // per minute
           match: [
             { path: "/auth/login" },
             { path: "/auth/register" },
             { path: "/auth/reset-password" },
+            { path: "/auth/verify-token" },
           ],
         },
 
-        // More strict rate limiting for admin endpoints
+        // Adaptive rate limiting for admin endpoints based on user role
         {
           id: "admin-rate-limit",
-          max: 20, // 20 requests
+          max:
+            req.user?.role === "superadmin"
+              ? 50
+              : req.user?.role === "admin"
+              ? 30
+              : 5, // Adaptive limits
           period: "1m", // per minute
           match: [{ path: "/admin/*" }, { path: "/superadmin/*" }],
         },
 
-        // General rate limiting for all other endpoints
+        // Enhanced general rate limiting with user-based adaptation
         {
           id: "general-rate-limit",
-          max: 60, // 60 requests
+          max:
+            req.user?.role === "admin"
+              ? 120
+              : req.user?.role === "counselor"
+              ? 100
+              : 60, // Role-based limits
           period: "1m", // per minute
           // No match means it applies to all routes not matched above
         },
 
-        // Bot protection for all routes
+        // Chat-specific rate limiting to prevent spam
         {
-          id: "bot-protection",
-          action: "block",
+          id: "chat-rate-limit",
+          max: req.user?.role === "counselor" ? 100 : 50, // Higher limits for counselors
+          period: "1m",
+          match: [{ path: "/chat/*" }],
         },
 
-        // Email validation for registration
+        // Enhanced bot protection with different actions for different endpoints
+        {
+          id: "bot-protection",
+          action: req.path.includes("/admin") ? "block" : "monitor", // Block bots from admin, monitor elsewhere
+        },
+
+        // Geographic restriction (configurable countries)
+        ...(config.arcjet.enableGeoBlocking
+          ? [
+              {
+                id: "geo-restriction",
+                countries: config.arcjet.allowedCountries, // Configurable allowed countries
+                action: config.isProduction ? "block" : "monitor", // Only enforce in production
+              },
+            ]
+          : []),
+
+        // Enhanced email validation for registration
         {
           id: "email-validation",
           match: [{ path: "/auth/register" }],
-          allowedDomains: config.arcjet.allowedEmailDomains || [],
+          allowedDomains: config.arcjet.allowedEmailDomains || [
+            "iiitkottayam.ac.in",
+          ],
         },
+
+        // Content filtering for chat and user input (configurable)
+        ...(config.arcjet.enableContentFiltering
+          ? [
+              {
+                id: "content-filter",
+                match: [{ path: "/chat/*" }, { path: "/users/*" }],
+                patterns: config.arcjet.contentFilterPatterns, // Configurable content filtering patterns
+                action: "flag", // Flag for review rather than block
+              },
+            ]
+          : []),
       ],
     });
 
     // Calculate response time for monitoring
     const responseTime = Math.round(performance.now() - startTime);
+
+    // Store Arcjet result in request for analytics middleware
+    req.arcjetResult = {
+      ...result,
+      responseTime,
+      timestamp: new Date().toISOString(),
+    };
 
     // Log high latency in production
     if (config.isProduction && responseTime > 100) {
@@ -191,14 +253,29 @@ export const arcjetProtection = async (req, res, next) => {
     if (result.flagged) {
       // Determine appropriate status code based on reason
       let statusCode = 429; // Default to Too Many Requests
-      let errorCode = "rate_limit_exceeded";
+      let errorCode = "ADAPTIVE_RATE_LIMIT_EXCEEDED";
 
       if (result.reason === "BOT") {
         statusCode = 403; // Forbidden
-        errorCode = "bot_detected";
+        errorCode = "BOT_DETECTED";
       } else if (result.reason === "EMAIL_GUARD") {
         statusCode = 400; // Bad Request
-        errorCode = "invalid_email";
+        errorCode = "EMAIL_DOMAIN_NOT_ALLOWED";
+      } else if (result.reason === "GEO_BLOCKED") {
+        statusCode = 403; // Forbidden
+        errorCode = "GEO_BLOCKED";
+      } else if (result.reason === "CONTENT_FILTERED") {
+        statusCode = 400; // Bad Request
+        errorCode = "CONTENT_FILTERED";
+      } else if (result.reason === "SPAM_DETECTED") {
+        statusCode = 400; // Bad Request
+        errorCode = "SPAM_DETECTED";
+      } else if (result.reason === "ABUSE_DETECTED") {
+        statusCode = 400; // Bad Request
+        errorCode = "ABUSE_DETECTED";
+      } else if (result.reason === "WAF") {
+        statusCode = 403; // Forbidden
+        errorCode = "WAF_BLOCKED";
       }
 
       // Log security event
@@ -302,7 +379,7 @@ export const emailDomainValidation = async (req, res, next) => {
         success: false,
         error: {
           message: "Email is required",
-          code: "missing_email",
+          code: "MISSING_REQUIRED_FIELD",
         },
       });
     }
@@ -354,7 +431,7 @@ export const emailDomainValidation = async (req, res, next) => {
         error: {
           message:
             "Email domain not allowed. Please use an authorized email domain.",
-          code: "invalid_email_domain",
+          code: "EMAIL_DOMAIN_NOT_ALLOWED",
         },
       });
     }

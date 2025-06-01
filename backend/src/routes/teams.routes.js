@@ -35,13 +35,6 @@ router.get("/batch/:batch", teamsController.getTeamMembersByBatch);
 // Get team member by ID
 router.get("/:id", teamsController.getTeamMemberById);
 
-// Protected routes
-// Seed teams (admin only)
-router.post(
-  "/seed",
-  clientAuthMiddleware,
-  clientIsAdmin,
-  teamsController.seedTeams
-);
+// Protected routes - none currently needed
 
 export default router;

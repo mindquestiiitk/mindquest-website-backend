@@ -1,9 +1,9 @@
 import express from "express";
 import { admin } from "../config/firebase.config.js";
-import { formatResponse, formatNotFound } from "../utils/response.format.js";
+import { successResponse, notFoundResponse } from "../utils/response.js";
 import logger from "../utils/logger.js";
 import { executeWithRetry, createErrorResponse } from "../utils/error.js";
-import { executeQueryWithCache } from "../utils/firebase-performance.js";
+import { executeQueryWithCache } from "../utils/firebase-cache.js";
 import { clientAuthMiddleware } from "../middleware/client-auth.middleware.js";
 
 const router = express.Router();
@@ -59,7 +59,7 @@ router.get("/products", async (req, res) => {
     );
 
     // Use standardized response format
-    formatResponse(req, res, products, "Products retrieved successfully");
+    successResponse(res, products, "Products retrieved successfully");
   } catch (error) {
     logger.error("Error fetching products", {
       error: error.message,
@@ -102,11 +102,11 @@ router.get("/sales", async (req, res) => {
 
     if (!sale) {
       logger.warn("No sale found", { path: req.path });
-      return formatNotFound(res, "No sale found");
+      return notFoundResponse(res, "No sale found");
     }
 
     // Use standardized response format
-    formatResponse(req, res, sale, "Sale retrieved successfully");
+    successResponse(res, sale, "Sale retrieved successfully");
   } catch (error) {
     logger.error("Error fetching sale", {
       error: error.message,

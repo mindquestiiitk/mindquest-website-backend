@@ -4,19 +4,16 @@ import helmet from "helmet";
 import morgan from "morgan";
 import cookieParser from "cookie-parser";
 import { createServer } from "http";
-import { Server } from "socket.io";
 import { arcjetProtection } from "./middleware/arcjet.middleware.js";
+import { arcjetAnalytics } from "./middleware/arcjet-analytics.middleware.js";
 import { errorHandler } from "./middleware/error.middleware.js";
 import config from "./config/config.js";
 import logger from "./utils/logger.js";
-import {
-  createCorsConfig,
-  createSocketCorsConfig,
-} from "./config/cors.config.js";
+import { createCorsConfig } from "./config/cors.config.js";
+import { initializeSocket } from "./config/socket.config.js";
 
 // Import modules
 import "./config/firebase.config.js";
-import { logIndexRecommendations } from "./utils/firebase-performance.js";
 import { initializeScheduler } from "./utils/scheduler.js";
 
 // Import routes
@@ -38,10 +35,8 @@ const httpServer = createServer(app);
 // Apply CORS middleware with centralized configuration
 app.use(cors(createCorsConfig()));
 
-// Initialize Socket.IO with centralized CORS configuration
-new Server(httpServer, {
-  cors: createSocketCorsConfig(),
-});
+// Initialize Socket.IO with proper configuration and event handlers
+const io = initializeSocket(httpServer);
 
 app.use(
   morgan(config.isDevelopment ? "dev" : "combined", {
@@ -125,10 +120,6 @@ if (!config.isDevelopment || config.arcjet.enableInDev) {
   logger.warn("Arcjet protection disabled in development mode");
 }
 
-// Import the auth controller for direct route
-import { AuthController } from "./controllers/auth.controller.js";
-const authController = new AuthController();
-
 // Register all routes
 app.use("/auth", authRoutes);
 app.use("/merch", merchRoutes);
@@ -142,124 +133,13 @@ app.use("/chat", chatRoutes);
 app.use("/counselors", counselorRoutes);
 app.use("/api", arcjetRoutes);
 
-// Add OPTIONS handler for the direct verify-token endpoint
-app.options("/verify-token", (req, res) => {
-  res.header("Access-Control-Allow-Origin", req.headers.origin || "*");
-  res.header("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.header(
-    "Access-Control-Allow-Headers",
-    "Content-Type, Authorization, x-request-id, x-request-timestamp, x-requested-with, accept, origin, cache-control, x-api-key"
-  );
-  res.header("Access-Control-Allow-Credentials", "true");
-  res.header("Access-Control-Max-Age", "86400"); // 24 hours
-  res.status(204).end();
-
-  logger.debug("OPTIONS request for direct verify-token endpoint", {
-    origin: req.headers.origin,
-    path: req.path,
-  });
-});
-
-// Add direct route for verify-token as a fallback
-// This ensures the endpoint is accessible even if there's an issue with the auth routes
-app.post("/verify-token", (req, res, next) => {
-  logger.info("Direct verify-token endpoint accessed");
-
-  // Set CORS headers for this specific route
-  res.header("Access-Control-Allow-Origin", req.headers.origin || "*");
-  res.header("Access-Control-Allow-Credentials", "true");
-  res.header(
-    "Access-Control-Expose-Headers",
-    "x-request-id, x-token-expiring-soon, x-token-expires-in, x-request-timestamp"
-  );
-
-  // Log request details for debugging
-  const authHeader = req.headers.authorization;
-  const hasValidAuthHeader = authHeader && authHeader.startsWith("Bearer ");
-  const hasCookieToken = req.cookies && req.cookies.token;
-  const hasQueryToken = req.query && req.query.token;
-
-  logger.debug("Direct token verification request received", {
-    hasValidAuthHeader,
-    hasCookieToken,
-    hasQueryToken,
-    origin: req.headers.origin,
-    path: req.path,
-    method: req.method,
-    ip: req.ip,
-    userAgent: req.headers["user-agent"],
-    cookies: req.cookies ? Object.keys(req.cookies) : [],
-    query: req.query ? Object.keys(req.query) : [],
-  });
-
-  // Forward to the auth controller
-  authController.verifyToken(req, res, next);
-});
-
-// Add direct route for registration as a fallback
-// This ensures the endpoint is accessible even if there's an issue with the auth routes
-app.options("/register", (req, res) => {
-  res.header("Access-Control-Allow-Origin", req.headers.origin || "*");
-  res.header("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.header(
-    "Access-Control-Allow-Headers",
-    "Content-Type, Authorization, x-request-id, x-request-timestamp, x-requested-with, accept, origin, cache-control, x-api-key"
-  );
-  res.header("Access-Control-Allow-Credentials", "true");
-  res.header("Access-Control-Max-Age", "86400"); // 24 hours
-  res.status(204).end();
-
-  logger.debug("OPTIONS request for direct register endpoint", {
-    origin: req.headers.origin,
-    path: req.path,
-  });
-});
-
-app.post("/register", (req, res, next) => {
-  logger.info("Direct register endpoint accessed");
-
-  // Set CORS headers for this specific route
-  res.header("Access-Control-Allow-Origin", req.headers.origin || "*");
-  res.header("Access-Control-Allow-Credentials", "true");
-
-  // Log request details for debugging
-  logger.debug("Direct registration request received", {
-    origin: req.headers.origin,
-    path: req.path,
-    method: req.method,
-    ip: req.ip,
-    userAgent: req.headers["user-agent"],
-    hasIdToken: !!req.body.idToken,
-    hasEmail: !!req.body.email,
-  });
-
-  // Forward to the auth controller
-  authController.register(req, res, next);
-});
+// Apply Arcjet analytics middleware after routes to collect security metrics
+// This runs after Arcjet protection to analyze and store security data
+app.use(arcjetAnalytics);
 
 // Root route redirects to health check
 app.get("/", (_, res) => {
   res.redirect("/health");
-});
-
-// Add a test endpoint to verify API is working
-app.get("/api-test", (req, res) => {
-  logger.info("API test endpoint accessed", {
-    ip: req.ip,
-    userAgent: req.headers["user-agent"],
-    path: req.path,
-  });
-
-  res.json({
-    success: true,
-    message: "API is working correctly",
-    timestamp: new Date().toISOString(),
-    endpoints: {
-      auth: "/auth/*",
-      health: "/health",
-      verify: "/verify-token",
-    },
-  });
 });
 
 app.use((req, _, next) => {
@@ -271,15 +151,8 @@ app.use((req, _, next) => {
 
 app.use(errorHandler);
 
-if (config.isDevelopment) {
-  logIndexRecommendations();
-}
-
-// Initialize minimal task scheduler for token cleanup
-// For production, consider using Firebase Cloud Functions instead
-if (config.isDevelopment) {
-  initializeScheduler();
-}
+// Initialize task scheduler for token cleanup
+initializeScheduler();
 
 const PORT = config.port;
 httpServer.listen(PORT, () => {

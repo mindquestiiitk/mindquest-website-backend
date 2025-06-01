@@ -77,7 +77,7 @@ const jwtConfig = {
   refreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN || "7d",
 };
 
-// Arcjet configuration
+// Enhanced Arcjet configuration - features auto-enabled based on NODE_ENV
 const arcjetConfig = {
   apiKey: process.env.ARCJET_API_KEY,
   site: process.env.ARCJET_SITE || "mindquest",
@@ -88,6 +88,19 @@ const arcjetConfig = {
         domain.trim()
       )
     : ["iiitkottayam.ac.in"], // Default to IIIT Kottayam domain
+
+  // Enhanced security features - automatically enabled in production
+  enableAnalytics: isProduction, // Always enabled in production
+  enableGeoBlocking: isProduction, // Always enabled in production
+  allowedCountries: ["IN"], // India only for college app
+  enableContentFiltering: isProduction, // Always enabled in production
+  contentFilterPatterns: [
+    "spam",
+    "abuse",
+    "inappropriate",
+    "offensive",
+    "harassment",
+  ],
 };
 
 // Logging configuration
@@ -110,6 +123,14 @@ const sessionConfig = {
   maxAge: parseInt(process.env.SESSION_MAX_AGE || "14") * 24 * 60 * 60 * 1000, // Default 14 days in ms
   cleanupInterval:
     parseInt(process.env.SESSION_CLEANUP_INTERVAL || "60") * 60 * 1000, // Default 60 minutes in ms
+};
+
+// Cache configuration
+const cacheConfig = {
+  enabled: process.env.CACHE_ENABLED !== "false",
+  maxSize: parseInt(process.env.CACHE_MAX_SIZE || "1000"),
+  defaultTTL: parseInt(process.env.CACHE_DEFAULT_TTL || "300000"), // 5 minutes
+  cleanupInterval: parseInt(process.env.CACHE_CLEANUP_INTERVAL || "60000"), // 1 minute
 };
 
 // Security configuration
@@ -153,21 +174,7 @@ const config = {
   order: orderConfig,
   session: sessionConfig,
   security: securityConfig,
+  cache: cacheConfig,
 };
-
-// Log configuration in development mode
-if (isDevelopment) {
-  console.log("Configuration loaded:", {
-    ...config,
-    firebase: {
-      ...config.firebase,
-      // No sensitive data to redact since we're not using private keys directly
-    },
-    jwt: {
-      ...config.jwt,
-      secret: "[REDACTED]",
-    },
-  });
-}
 
 export default config;

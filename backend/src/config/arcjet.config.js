@@ -277,32 +277,143 @@ try {
       return createFallbackDecision({ ip });
     },
 
-    // Mock other methods with basic implementations
-    emailGuard: (email) => {
-      // Basic email validation
-      const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email || "");
-      return {
-        id: `fallback-email-guard-${INSTANCE_ID}`,
-        decision: isValidEmail ? "ALLOW" : "BLOCK",
-        source: "fallback",
-      };
+    // Firebase-integrated security implementations
+    emailGuard: async (email) => {
+      try {
+        // Enhanced email validation with Firebase logging
+        const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email || "");
+        const isAllowedDomain = email?.endsWith("@iiitkottayam.ac.in") || false;
+
+        // Log security events to Firebase for monitoring
+        if (!isValidEmail || !isAllowedDomain) {
+          try {
+            const { db } = await import("../config/firebase.config.js");
+            await db.collection("security_events").add({
+              type: "email_validation_failed",
+              email: email?.split("@")[0] + "@***", // Mask email for privacy
+              reason: !isValidEmail ? "invalid_format" : "domain_not_allowed",
+              timestamp: new Date(),
+              source: "arcjet_fallback",
+            });
+          } catch (logError) {
+            logger.warn("Failed to log security event", {
+              error: logError.message,
+            });
+          }
+        }
+
+        return {
+          id: `firebase-email-guard-${INSTANCE_ID}`,
+          decision: isValidEmail && isAllowedDomain ? "ALLOW" : "BLOCK",
+          source: "firebase_integrated",
+          reason: !isValidEmail
+            ? "invalid_email"
+            : !isAllowedDomain
+            ? "domain_not_allowed"
+            : "allowed",
+        };
+      } catch (error) {
+        logger.error("Email guard error", { error: error.message });
+        return {
+          id: `fallback-email-guard-${INSTANCE_ID}`,
+          decision: "ALLOW", // Fail open for availability
+          source: "error_fallback",
+          reason: "validation_error",
+        };
+      }
     },
 
-    rateLimit: (key) => {
-      // Use the same basic rate limiting
-      const isLimited = basicRateLimit(key || "default");
-      return {
-        id: `fallback-rate-limit-${INSTANCE_ID}`,
-        decision: isLimited ? "BLOCK" : "ALLOW",
-        source: "fallback",
-      };
+    rateLimit: async (key) => {
+      try {
+        // Enhanced rate limiting with Firebase logging
+        const isLimited = basicRateLimit(key || "default");
+
+        if (isLimited) {
+          // Log rate limit events to Firebase
+          try {
+            const { db } = await import("../config/firebase.config.js");
+            await db.collection("security_events").add({
+              type: "rate_limit_exceeded",
+              key: key || "default",
+              timestamp: new Date(),
+              source: "arcjet_fallback",
+            });
+          } catch (logError) {
+            logger.warn("Failed to log rate limit event", {
+              error: logError.message,
+            });
+          }
+        }
+
+        return {
+          id: `firebase-rate-limit-${INSTANCE_ID}`,
+          decision: isLimited ? "BLOCK" : "ALLOW",
+          source: "firebase_integrated",
+          reason: isLimited ? "rate_limit_exceeded" : "allowed",
+        };
+      } catch (error) {
+        logger.error("Rate limit error", { error: error.message });
+        return {
+          id: `fallback-rate-limit-${INSTANCE_ID}`,
+          decision: "ALLOW", // Fail open for availability
+          source: "error_fallback",
+          reason: "validation_error",
+        };
+      }
     },
 
-    bot: () => ({
-      id: `fallback-bot-protection-${INSTANCE_ID}`,
-      decision: "ALLOW",
-      source: "fallback",
-    }),
+    bot: async (request) => {
+      try {
+        // Enhanced bot detection with Firebase logging
+        const userAgent = request?.headers?.["user-agent"] || "";
+        const suspiciousBotPatterns = [
+          /bot/i,
+          /crawler/i,
+          /spider/i,
+          /scraper/i,
+          /curl/i,
+          /wget/i,
+          /python/i,
+          /java/i,
+        ];
+
+        const isSuspicious = suspiciousBotPatterns.some((pattern) =>
+          pattern.test(userAgent)
+        );
+
+        if (isSuspicious) {
+          // Log bot detection to Firebase
+          try {
+            const { db } = await import("../config/firebase.config.js");
+            await db.collection("security_events").add({
+              type: "suspicious_bot_detected",
+              userAgent: userAgent.substring(0, 200), // Limit length
+              timestamp: new Date(),
+              source: "arcjet_fallback",
+            });
+          } catch (logError) {
+            logger.warn("Failed to log bot detection event", {
+              error: logError.message,
+            });
+          }
+        }
+
+        return {
+          id: `firebase-bot-protection-${INSTANCE_ID}`,
+          decision: isSuspicious ? "BLOCK" : "ALLOW",
+          source: "firebase_integrated",
+          reason: isSuspicious ? "suspicious_user_agent" : "allowed",
+        };
+      } catch (error) {
+        logger.error("Bot detection error", { error: error.message });
+        return {
+          id: `fallback-bot-protection-${INSTANCE_ID}`,
+          decision: "ALLOW", // Fail open for availability
+          source: "error_fallback",
+          reason: "validation_error",
+        };
+      }
+    },
 
     // Add health check method for monitoring
     healthCheck: () => ({

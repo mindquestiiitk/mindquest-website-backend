@@ -105,11 +105,12 @@ export const createCorsConfig = () => {
  * @returns {Object} Socket.IO CORS configuration object
  */
 export const createSocketCorsConfig = () => {
+  const baseConfig = createCorsConfig();
   return {
-    origin: createOriginCallback(),
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
-    allowedHeaders: getAllowedHeaders(),
+    origin: baseConfig.origin,
+    credentials: baseConfig.credentials,
+    methods: baseConfig.methods,
+    allowedHeaders: baseConfig.allowedHeaders,
   };
 };
 

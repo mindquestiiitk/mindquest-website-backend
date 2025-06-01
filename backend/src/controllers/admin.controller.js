@@ -72,4 +72,21 @@ export class AdminController {
 
     successResponse(res, { count }, "Message count retrieved successfully");
   });
+
+  /**
+   * Get all users for admin dashboard
+   * @route GET /admin/users
+   */
+  getAllUsers = catchAsync(async (req, res) => {
+    logger.info("Fetching all users for admin dashboard", {
+      requestedBy: req.user.id,
+      path: req.path,
+      method: req.method,
+    });
+
+    const users = await this.adminService.getAllUsers();
+    logger.debug(`Retrieved ${users.length} users`);
+
+    successResponse(res, users, "Users retrieved successfully");
+  });
 }
