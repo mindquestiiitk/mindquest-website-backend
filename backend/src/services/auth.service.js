@@ -698,7 +698,6 @@ class AuthService {
               userId: decodedToken.uid,
             });
 
-            // Create a basic user profile if it doesn't exist
             await this.ensureUserProfile(decodedToken.uid, {
               email: decodedToken.email || "",
               name:
@@ -820,8 +819,6 @@ class AuthService {
           }
         );
 
-        // Ensure the user exists in the users collection with proper role
-        // Use our dedicated helper method for this
         await this.ensureUserProfile(decodedToken.uid, {
           email: decodedToken.email,
           name: userData?.name || decodedToken.name,
@@ -1156,6 +1153,8 @@ class AuthService {
         avatarId: userData.avatarId || "default",
         provider: userData.provider || "password",
         emailVerified: userData.emailVerified || false,
+        bio: userData.bio || "",
+        socialLinks: userData.socialLinks || {},
       };
     } catch (error) {
       logger.error("Error getting user by ID", {
@@ -1214,7 +1213,8 @@ class AuthService {
           // Create new user document with the user's UID as the document ID
           // This is crucial for collection-based security
           userDataToSave.createdAt = new Date().toISOString();
-          userDataToSave.avatarId = userData.avatarId || "default";
+          userDataToSave.avatarId =
+            userData.avatarId !== undefined ? userData.avatarId : "default";
           userDataToSave.preferences = userData.preferences || {};
           userDataToSave.bio = userData.bio || "";
 
@@ -1245,17 +1245,15 @@ class AuthService {
           const oldRole = existingData.role;
           const newRole = userData.role || existingData.role || UserRole.USER;
 
-          // Preserve important existing fields and add new ones
           const mergedData = {
             ...existingData,
             ...userDataToSave,
-            // Preserve existing role unless explicitly changing it
             role: newRole,
-            // Preserve avatar if not explicitly changing it
-            avatarId: userData.avatarId || existingData.avatarId || "default",
-            // Preserve preferences if they exist
+            avatarId:
+              userData.avatarId !== undefined
+                ? userData.avatarId
+                : existingData.avatarId || "default",
             preferences: userData.preferences || existingData.preferences || {},
-            // Update lastActive timestamp
             lastActive: new Date().toISOString(),
           };
 
@@ -1662,35 +1660,29 @@ class AuthService {
         throw createError(404, "User not found");
       }
 
-      // Filter out undefined values
       const filteredUpdates = Object.fromEntries(
         Object.entries(updates).filter(([_, value]) => value !== undefined)
       );
 
-      // Add timestamp
       const updateData = {
         ...filteredUpdates,
         updatedAt: new Date().toISOString(),
       };
 
-      // Update in Firestore
       await userRef.update(updateData);
 
-      // If name is being updated, also update in Auth
       if (updates.name) {
         await this.auth.updateUser(userId, {
           displayName: updates.name,
         });
       }
 
-      // If email is being updated, also update in Auth
       if (updates.email) {
         await this.auth.updateUser(userId, {
           email: updates.email,
         });
       }
 
-      // Get updated user
       return await this.getUserById(userId);
     } catch (error) {
       logger.error("Error updating user profile", {
