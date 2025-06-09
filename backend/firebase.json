@@ -6,26 +6,22 @@
   "storage": {
     "rules": "storage.rules"
   },
-  "database": {
-    "rules": "database.rules.json"
-  },
-  "functions": {
-    "source": "functions",
-    "runtime": "nodejs18",
-    "predeploy": ["npm --prefix \"$RESOURCE_DIR\" run lint"]
-  },
   "emulators": {
     "auth": {
+      "host": "127.0.0.1",
       "port": 9099
     },
     "firestore": {
-      "port": 8080
+      "host": "127.0.0.1",
+      "port": 8000
     },
-    "functions": {
-      "port": 5001
+    "storage": {
+      "host": "127.0.0.1",
+      "port": 9199
     },
     "ui": {
       "enabled": true,
+      "host": "127.0.0.1",
       "port": 4000
     },
     "singleProjectMode": true

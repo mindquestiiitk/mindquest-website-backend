@@ -2,41 +2,62 @@
 
 ## Base URL
 
+**Development:**
+
 ```
-https://api.mindquest.com/v1
+http://localhost:3001
+```
+
+**Production:**
+
+```
+https://api.mindquest.com
 ```
 
 ## Authentication
 
-All API requests require authentication using a Bearer token in the Authorization header:
+All protected API requests require authentication using a Bearer token in the Authorization header:
 
 ```
-Authorization: Bearer <token>
+Authorization: Bearer <firebase_id_token>
 ```
+
+### Authentication Flow
+
+1. **Register/Login** with Firebase on frontend
+2. **Get Firebase ID Token** from Firebase Auth
+3. **Send token** in Authorization header for API requests
+4. **Backend validates** token with Firebase Admin SDK
+
+## API Architecture - Normalized Data Structure
+
+### Key Features
+
+- **Normalized Database**: User data stored once in `users/{userId}` collection
+- **Reference-Based Roles**: Event roles store only user references, not duplicate data
+- **Real-time Population**: User details populated on-demand from authoritative source
+- **Consistent Data**: Profile updates automatically reflect across all features
 
 ## API Endpoints Overview
 
-### Public Endpoints
+### 🌐 Public Endpoints (No Authentication)
 
-- Authentication (register, login, password reset)
-- Events (view, search)
-- Teams (view team members)
-- Health checks
+- **Authentication**: Register, login, password reset, token verification
+- **Events**: View events and event details with populated user data
+- **Health**: System health checks and status
 
-### User Endpoints (Authenticated)
+### 🔐 User Endpoints (Authentication Required)
 
-- Profile management
-- Event registration
-- Chat/messaging
-- Merchandise orders
+- **Profile Management**: Update profile, avatar, bio, social links
+- **User Operations**: Search users, view profiles, preferences
+- **Counselor Services**: Access human and AI counselor support
 
-### Admin Endpoints (Admin Role Required)
+### 👑 Admin Endpoints (Admin Role Required)
 
-- System statistics and monitoring
-- User/counselor/message counts
-- Event role management (assign, view, manage)
-- Event creation and management with roles
-- Security analytics
+- **Event Management**: Create/update events with role assignments
+- **Role Management**: Assign/manage event roles with user population
+- **System Analytics**: User statistics, security monitoring
+- **User Administration**: Role updates, user management
 
 ### SuperAdmin Endpoints (SuperAdmin Role Required)
 
@@ -48,284 +69,501 @@ Authorization: Bearer <token>
 
 ---
 
-### Authentication
+## 🔐 Authentication Endpoints
 
-#### Register User
+### Register User
+
+Creates a new user account with Firebase authentication and normalized user data.
 
 ```http
 POST /auth/register
 Content-Type: application/json
 
 {
-  "name": "string",
-  "email": "string",
-  "idToken": "string" // Firebase ID token
+  "name": "John Doe",
+  "email": "john@university.edu",
+  "idToken": "firebase_id_token_here",
+  "provider": "password"
 }
 ```
 
-Response (200 OK):
+**Response (201 Created):**
 
 ```json
 {
   "success": true,
   "data": {
     "user": {
-      "id": "string",
-      "name": "string",
-      "email": "string",
-      "role": "user"
+      "id": "firebase_user_id",
+      "name": "John Doe",
+      "email": "john@university.edu",
+      "role": "user",
+      "avatarId": "default",
+      "bio": "",
+      "socialLinks": {},
+      "provider": "password",
+      "emailVerified": false,
+      "createdAt": "2024-01-01T00:00:00.000Z",
+      "updatedAt": "2024-01-01T00:00:00.000Z"
     },
-    "token": "string"
-  }
+    "token": "jwt_session_token"
+  },
+  "message": "User registered successfully",
+  "timestamp": "2024-01-01T00:00:00.000Z"
 }
 ```
 
-Error Response (400 Bad Request):
+### Login User
 
-```json
-{
-  "success": false,
-  "error": {
-    "message": "Invalid request data",
-    "code": "INVALID_REQUEST_DATA",
-    "details": {
-      "email": "Invalid email format",
-      "password": "Password must be at least 8 characters"
-    }
-  }
-}
-```
-
-#### Login
+Authenticates existing user with Firebase ID token.
 
 ```http
 POST /auth/login
 Content-Type: application/json
 
 {
-  "email": "string",
-  "password": "string"
+  "email": "john@university.edu",
+  "idToken": "firebase_id_token_here"
 }
 ```
 
-Response (200 OK):
+**Response (200 OK):**
 
 ```json
 {
   "success": true,
   "data": {
     "user": {
-      "id": "string",
-      "name": "string",
-      "email": "string",
-      "role": "string"
+      "id": "firebase_user_id",
+      "name": "John Doe",
+      "email": "john@university.edu",
+      "role": "user",
+      "avatarId": "avatar_2",
+      "bio": "Computer Science student passionate about AI",
+      "socialLinks": {
+        "linkedin": "https://linkedin.com/in/johndoe",
+        "github": "https://github.com/johndoe",
+        "website": "https://johndoe.dev"
+      },
+      "provider": "password",
+      "emailVerified": true
     },
-    "token": "string"
-  }
+    "token": "jwt_session_token"
+  },
+  "message": "Login successful",
+  "timestamp": "2024-01-01T00:00:00.000Z"
 }
 ```
 
-Error Response (401 Unauthorized):
+### Get Current User
 
-```json
-{
-  "success": false,
-  "error": {
-    "message": "Invalid email or password",
-    "code": "INVALID_CREDENTIALS"
-  }
-}
-```
-
-#### Get Current User
+Retrieves current authenticated user with complete profile data.
 
 ```http
 GET /auth/me
-Authorization: Bearer <token>
+Authorization: Bearer <firebase_id_token>
 ```
 
-Response (200 OK):
+**Response (200 OK):**
 
 ```json
 {
   "success": true,
   "data": {
     "user": {
-      "id": "string",
-      "name": "string",
-      "email": "string",
-      "role": "string"
+      "id": "firebase_user_id",
+      "name": "John Doe",
+      "email": "john@university.edu",
+      "role": "user",
+      "avatarId": "avatar_2",
+      "bio": "Computer Science student passionate about AI",
+      "socialLinks": {
+        "linkedin": "https://linkedin.com/in/johndoe",
+        "github": "https://github.com/johndoe"
+      },
+      "provider": "password",
+      "emailVerified": true,
+      "createdAt": "2024-01-01T00:00:00.000Z",
+      "updatedAt": "2024-01-01T00:00:00.000Z"
     }
+  },
+  "message": "User retrieved successfully",
+  "timestamp": "2024-01-01T00:00:00.000Z"
+}
+```
+
+### Update User Profile
+
+Updates user profile with normalized data architecture.
+
+```http
+PUT /auth/me
+Authorization: Bearer <firebase_id_token>
+Content-Type: application/json
+
+{
+  "name": "John Smith",
+  "avatarId": "avatar_3",
+  "bio": "Full-stack developer and AI enthusiast",
+  "socialLinks": {
+    "linkedin": "https://linkedin.com/in/johnsmith",
+    "github": "https://github.com/johnsmith",
+    "website": "https://johnsmith.dev",
+    "twitter": "https://twitter.com/johnsmith"
   }
 }
 ```
 
-Error Response (401 Unauthorized):
+**Response (200 OK):**
 
 ```json
 {
-  "success": false,
-  "error": {
-    "message": "Authentication token has expired",
-    "code": "TOKEN_EXPIRED"
-  }
+  "success": true,
+  "data": {
+    "user": {
+      "id": "firebase_user_id",
+      "name": "John Smith",
+      "email": "john@university.edu",
+      "role": "user",
+      "avatarId": "avatar_3",
+      "bio": "Full-stack developer and AI enthusiast",
+      "socialLinks": {
+        "linkedin": "https://linkedin.com/in/johnsmith",
+        "github": "https://github.com/johnsmith",
+        "website": "https://johnsmith.dev",
+        "twitter": "https://twitter.com/johnsmith"
+      },
+      "provider": "password",
+      "emailVerified": true,
+      "updatedAt": "2024-01-01T00:00:00.000Z"
+    }
+  },
+  "message": "Profile updated successfully",
+  "timestamp": "2024-01-01T00:00:00.000Z"
 }
 ```
 
-### Events
+## 🎉 Events Endpoints
 
-#### Get All Events
+### Get All Events
+
+Retrieves all events with basic information (public endpoint).
 
 ```http
 GET /events
-Authorization: Bearer <token>
 ```
 
-Query Parameters:
+**Query Parameters:**
 
 - `page` (optional): Page number (default: 1)
 - `limit` (optional): Items per page (default: 10)
 - `sort` (optional): Sort field (default: "date")
 - `order` (optional): Sort order ("asc" or "desc")
 
-Response (200 OK):
+**Response (200 OK):**
 
 ```json
 {
   "success": true,
-  "data": {
-    "events": [
-      {
-        "id": "string",
-        "title": "string",
-        "description": "string",
-        "date": "string",
-        "location": "string",
-        "image": "string",
-        "capacity": number,
-        "registered": number,
-        "status": "upcoming" | "ongoing" | "completed"
-      }
-    ],
-    "pagination": {
-      "page": number,
-      "limit": number,
-      "total": number,
-      "pages": number
+  "data": [
+    {
+      "id": "p1",
+      "title": "AI Workshop 2024",
+      "description": "Learn the fundamentals of artificial intelligence",
+      "date": "2024-02-15T10:00:00.000Z",
+      "location": "Tech Hub, Room 101",
+      "image": "https://example.com/ai-workshop.jpg",
+      "capacity": 50,
+      "registered": 23,
+      "status": "upcoming",
+      "createdAt": "2024-01-01T00:00:00.000Z",
+      "updatedAt": "2024-01-01T00:00:00.000Z"
     }
-  }
+  ],
+  "message": "Events retrieved successfully",
+  "timestamp": "2024-01-01T00:00:00.000Z"
 }
 ```
 
-#### Get Event by ID
+### Get Event by ID
+
+Retrieves detailed event information with populated user data from normalized architecture.
 
 ```http
 GET /events/:eventId
-Authorization: Bearer <token>
 ```
 
-Response (200 OK):
+**Response (200 OK):**
 
 ```json
 {
   "success": true,
   "data": {
-    "event": {
-      "id": "string",
-      "title": "string",
-      "description": "string",
-      "date": "string",
-      "location": "string",
-      "image": "string",
-      "capacity": number,
-      "registered": number,
-      "status": "upcoming" | "ongoing" | "completed",
-      "organizer": {
-        "id": "string",
-        "name": "string",
-        "email": "string"
-      },
-      "participants": [
-        {
-          "id": "string",
-          "name": "string",
-          "email": "string"
+    "id": "p1",
+    "title": "AI Workshop 2024",
+    "description": "Learn the fundamentals of artificial intelligence and machine learning",
+    "date": "2024-02-15T10:00:00.000Z",
+    "location": "Tech Hub, Room 101",
+    "image": "https://example.com/ai-workshop.jpg",
+    "capacity": 50,
+    "registered": 23,
+    "status": "upcoming",
+    "roles": [
+      {
+        "userId": "organizer_user_id",
+        "role": "organizer",
+        "permissions": ["manage_event", "assign_roles"],
+        "assignedAt": "2024-01-01T00:00:00.000Z",
+        "expiration": null,
+        "userDetails": {
+          "name": "Dr. Sarah Johnson",
+          "email": "sarah.johnson@university.edu",
+          "avatarId": "avatar_5",
+          "bio": "AI Research Professor",
+          "socialLinks": {
+            "linkedin": "https://linkedin.com/in/sarahjohnson",
+            "website": "https://sarahjohnson.ai"
+          },
+          "photoURL": null
         }
-      ]
-    }
-  }
+      },
+      {
+        "userId": "volunteer_user_id",
+        "role": "volunteer",
+        "permissions": ["view_participants"],
+        "assignedAt": "2024-01-05T00:00:00.000Z",
+        "expiration": "2024-02-20T00:00:00.000Z",
+        "userDetails": {
+          "name": "Mike Chen",
+          "email": "mike.chen@university.edu",
+          "avatarId": "avatar_1",
+          "bio": "CS Student and AI enthusiast",
+          "socialLinks": {
+            "github": "https://github.com/mikechen",
+            "linkedin": "https://linkedin.com/in/mikechen"
+          },
+          "photoURL": null
+        }
+      }
+    ],
+    "createdAt": "2024-01-01T00:00:00.000Z",
+    "updatedAt": "2024-01-01T00:00:00.000Z"
+  },
+  "message": "Event retrieved successfully",
+  "timestamp": "2024-01-01T00:00:00.000Z"
 }
 ```
 
-### Chat
+## 👑 Admin Endpoints
 
-#### Send Message
+### Assign Event Role
+
+Assigns a role to a user for a specific event using normalized architecture.
 
 ```http
-POST /chat/messages
-Authorization: Bearer <token>
+POST /admin/events/roles
+Authorization: Bearer <admin_firebase_token>
 Content-Type: application/json
 
 {
-  "recipientId": "string",
-  "content": "string"
+  "userId": "user_firebase_id",
+  "eventId": "p1",
+  "role": "organizer",
+  "permissions": ["manage_event", "assign_roles"],
+  "expiration": "2024-12-31T23:59:59.000Z"
 }
 ```
 
-Response (200 OK):
+**Response (201 Created):**
 
 ```json
 {
   "success": true,
   "data": {
-    "message": {
-      "id": "string",
-      "content": "string",
-      "senderId": "string",
-      "recipientId": "string",
-      "timestamp": "string",
-      "status": "sent" | "delivered" | "read"
+    "userId": "user_firebase_id",
+    "eventId": "p1",
+    "role": "organizer",
+    "permissions": ["manage_event", "assign_roles"],
+    "assignedAt": "2024-01-01T00:00:00.000Z",
+    "expiration": "2024-12-31T23:59:59.000Z",
+    "userDetails": {
+      "name": "John Doe",
+      "email": "john@university.edu",
+      "avatarId": "avatar_2",
+      "bio": "Event management specialist",
+      "socialLinks": {
+        "linkedin": "https://linkedin.com/in/johndoe"
+      }
     }
-  }
+  },
+  "message": "Role assigned successfully",
+  "timestamp": "2024-01-01T00:00:00.000Z"
 }
 ```
 
-#### Get Messages
+### Get Event Roles
+
+Retrieves all roles for a specific event with populated user data.
 
 ```http
-GET /chat/messages/:userId
-Authorization: Bearer <token>
+GET /admin/events/roles/event/:eventId
+Authorization: Bearer <admin_firebase_token>
 ```
 
-Query Parameters:
+**Response (200 OK):**
 
-- `page` (optional): Page number (default: 1)
-- `limit` (optional): Items per page (default: 20)
-- `before` (optional): Get messages before this timestamp
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "userId": "organizer_user_id",
+      "role": "organizer",
+      "permissions": ["manage_event", "assign_roles"],
+      "assignedAt": "2024-01-01T00:00:00.000Z",
+      "expiration": null,
+      "userDetails": {
+        "name": "Dr. Sarah Johnson",
+        "email": "sarah.johnson@university.edu",
+        "avatarId": "avatar_5",
+        "bio": "AI Research Professor",
+        "socialLinks": {
+          "linkedin": "https://linkedin.com/in/sarahjohnson"
+        }
+      }
+    }
+  ],
+  "message": "Event roles retrieved successfully",
+  "timestamp": "2024-01-01T00:00:00.000Z"
+}
+```
 
-Response (200 OK):
+## 👥 User Endpoints
+
+### Get User Profile
+
+Retrieves user profile with normalized data.
+
+```http
+GET /users/profile/:userId
+Authorization: Bearer <firebase_id_token>
+```
+
+**Response (200 OK):**
 
 ```json
 {
   "success": true,
   "data": {
-    "messages": [
-      {
-        "id": "string",
-        "content": "string",
-        "senderId": "string",
-        "recipientId": "string",
-        "timestamp": "string",
-        "status": "sent" | "delivered" | "read"
-      }
-    ],
-    "pagination": {
-      "page": number,
-      "limit": number,
-      "total": number,
-      "pages": number
+    "id": "user_firebase_id",
+    "name": "John Doe",
+    "email": "john@university.edu",
+    "role": "user",
+    "avatarId": "avatar_2",
+    "bio": "Computer Science student passionate about AI",
+    "socialLinks": {
+      "linkedin": "https://linkedin.com/in/johndoe",
+      "github": "https://github.com/johndoe"
+    },
+    "provider": "password",
+    "emailVerified": true,
+    "createdAt": "2024-01-01T00:00:00.000Z",
+    "updatedAt": "2024-01-01T00:00:00.000Z"
+  },
+  "message": "User profile retrieved successfully",
+  "timestamp": "2024-01-01T00:00:00.000Z"
+}
+```
+
+### Search Users
+
+Search for users by name or email.
+
+```http
+GET /users/search?q=john&limit=10
+Authorization: Bearer <firebase_id_token>
+```
+
+**Response (200 OK):**
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "user_firebase_id",
+      "name": "John Doe",
+      "email": "john@university.edu",
+      "avatarId": "avatar_2",
+      "bio": "Computer Science student"
     }
-  }
+  ],
+  "message": "Users found successfully",
+  "timestamp": "2024-01-01T00:00:00.000Z"
+}
+```
+
+## 🧠 Counselor Endpoints
+
+### Get Human Counselors
+
+Retrieve available human counselors for support.
+
+```http
+GET /counselors/human
+Authorization: Bearer <firebase_id_token>
+```
+
+**Response (200 OK):**
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "counselor_id",
+      "name": "Dr. Sarah Johnson",
+      "specialization": "Academic Stress Management",
+      "availability": "available",
+      "rating": 4.8,
+      "experience": "5 years",
+      "type": "human"
+    }
+  ],
+  "message": "Human counselors retrieved successfully",
+  "timestamp": "2024-01-01T00:00:00.000Z"
+}
+```
+
+### Get AI Counselor
+
+Access AI-powered counseling support.
+
+```http
+GET /counselors/ai
+Authorization: Bearer <firebase_id_token>
+```
+
+**Response (200 OK):**
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": "ai_counselor",
+    "name": "MindQuest AI Assistant",
+    "type": "ai",
+    "availability": "24/7",
+    "capabilities": [
+      "stress_management",
+      "study_planning",
+      "emotional_support",
+      "goal_setting"
+    ],
+    "status": "online"
+  },
+  "message": "AI counselor information retrieved successfully",
+  "timestamp": "2024-01-01T00:00:00.000Z"
 }
 ```
 
@@ -538,12 +776,75 @@ When rate limit is exceeded:
 9. Monitor for suspicious activity patterns
 10. Implement proper session management
 
-## Examples
+## 🎛️ Admin Dashboard Testing
 
-### Register User with Email/Password
+### Access the Admin Dashboard
+
+Navigate to the admin dashboard in the client application for easy testing of event management functionality:
+
+```
+http://localhost:5174/admin-dashboard
+```
+
+**Note**: The admin dashboard is now integrated into the React client application for better user experience and authentication integration.
+
+### Dashboard Features
+
+#### 🔐 Authentication Setup
+
+- Enter your Firebase admin ID token
+- Test authentication status
+- Verify admin permissions
+
+#### 🎉 Event Management
+
+- **Create New Event**: Add events with title, description, date, location, and capacity
+- **Get All Events**: View all events in the system
+- **Get Event p1**: View specific event with populated user roles
+
+#### 👑 Role Management
+
+- **Assign Event Role**: Assign roles (organizer, volunteer, mentor, lead) to users
+- **Get Event Roles**: View all roles for an event with populated user details
+- **Permission Management**: Automatic permission assignment based on role type
+
+#### 🧪 Data Consistency Testing
+
+- **Complete Test Suite**: Automated testing of all functionality
+- **Real-time Validation**: Verify user data population in event roles
+- **Architecture Testing**: Confirm normalized data structure is working
+
+### Testing Event ID "p1"
+
+The dashboard is pre-configured to test with event ID "p1":
+
+1. **View Event Details**: Click "Get Event p1" to see event with populated roles
+2. **Assign New Role**: Use the role management section to assign roles to users
+3. **Verify Data Consistency**: Check that user profile updates reflect in event roles
+4. **Run Full Test**: Execute the complete test suite for comprehensive validation
+
+### Key Testing Points
+
+1. **Data Normalization**: User data stored once in `users/{userId}`
+2. **Real-time Population**: Event roles show fresh user data on every request
+3. **Avatar Persistence**: Avatar changes persist through logout/login cycles
+4. **Social Links**: Profile updates immediately reflect in event displays
+5. **Performance**: Efficient user data population without duplication
+
+### Dashboard Benefits
+
+- **Visual Interface**: Easy-to-use web interface instead of command line
+- **Real-time Results**: Immediate feedback on API operations
+- **Automated Testing**: Built-in test suite for comprehensive validation
+- **Error Handling**: Clear error messages and troubleshooting
+- **Data Visualization**: Formatted display of API responses
+
+## 📝 Examples
+
+### Complete Registration Flow
 
 ```javascript
-const response = await fetch("http://localhost:3000/auth/register", {
+const response = await fetch("http://localhost:3001/auth/register", {
   method: "POST",
   headers: {
     "Content-Type": "application/json",
@@ -603,24 +904,48 @@ if (data.success) {
 }
 ```
 
-### Send Chat Message
+### Update Profile with Social Links
 
 ```javascript
-const response = await fetch("http://localhost:3000/chat/message", {
-  method: "POST",
+const response = await fetch("http://localhost:3001/auth/me", {
+  method: "PUT",
   headers: {
     "Content-Type": "application/json",
-    Authorization: `Bearer ${token}`,
+    Authorization: `Bearer ${firebaseIdToken}`,
   },
   body: JSON.stringify({
-    receiverId: "user123",
-    content: "Hello, how are you?",
+    name: "John Smith",
+    avatarId: "avatar_3",
+    bio: "Full-stack developer and AI enthusiast",
+    socialLinks: {
+      linkedin: "https://linkedin.com/in/johnsmith",
+      github: "https://github.com/johnsmith",
+      website: "https://johnsmith.dev",
+    },
   }),
 });
 
 const data = await response.json();
 if (data.success) {
-  // Message sent successfully
+  // Profile updated successfully
+  console.log("Avatar and social links updated");
+}
+```
+
+### Access Human Counselor
+
+```javascript
+const response = await fetch("http://localhost:3001/counselors/human", {
+  method: "GET",
+  headers: {
+    Authorization: `Bearer ${firebaseIdToken}`,
+  },
+});
+
+const data = await response.json();
+if (data.success) {
+  const counselors = data.data;
+  // Display available human counselors
 }
 ```
 
@@ -1443,14 +1768,12 @@ async function makeRequest(url, options) {
 - `ROLE_UPDATE_FAILED`: Failed to update user role
 - `PERMISSION_UPDATE_FAILED`: Failed to update user permissions
 
-### Chat Errors
+### Counselor Errors
 
-- `MESSAGE_SEND_FAILED`: Failed to send message
-- `RECIPIENT_NOT_FOUND`: Message recipient does not exist
-- `CHAT_HISTORY_UNAVAILABLE`: Unable to retrieve chat history
-- `MESSAGE_TOO_LONG`: Message exceeds maximum length
-- `BLOCKED_USER`: Cannot send message to blocked user
-- `MARK_READ_FAILED`: Failed to mark messages as read
+- `COUNSELOR_NOT_FOUND`: Counselor does not exist
+- `COUNSELOR_TYPE_INVALID`: Invalid counselor type (must be 'human' or 'ai')
+- `COUNSELOR_UNAVAILABLE`: Counselor is not currently available
+- `AI_SERVICE_ERROR`: AI counselor service temporarily unavailable
 
 ### Event Errors
 
@@ -1477,13 +1800,6 @@ async function makeRequest(url, options) {
 - `INVALID_TEAM_TYPE`: Invalid team type specified
 - `INVALID_BATCH`: Invalid batch specified
 
-### Counselor Errors
-
-- `COUNSELOR_NOT_FOUND`: Counselor does not exist
-- `COUNSELOR_CREATION_FAILED`: Failed to create counselor profile
-- `AVAILABILITY_UPDATE_FAILED`: Failed to update counselor availability
-- `COUNSELOR_NOT_AVAILABLE`: Counselor is not currently available
-
 ### System Errors
 
 - `INTERNAL_SERVER_ERROR`: An unexpected error occurred
@@ -1492,11 +1808,232 @@ async function makeRequest(url, options) {
 - `FEATURE_DISABLED`: This feature is currently disabled
 - `CONFIGURATION_ERROR`: System configuration error
 
-## Support
+## 🚨 Error Handling Best Practices
 
-For API support:
+### Authentication Error Handling
 
-1. Check the documentation
-2. Review error messages
-3. Contact support@mindquest.com
-4. Create an issue in the repository
+```javascript
+async function handleAuthenticatedRequest(url, options) {
+  try {
+    const response = await fetch(url, {
+      ...options,
+      headers: {
+        ...options.headers,
+        Authorization: `Bearer ${firebaseIdToken}`,
+      },
+    });
+
+    const data = await response.json();
+
+    if (!data.success) {
+      switch (data.error.code) {
+        case "TOKEN_EXPIRED":
+          // Refresh Firebase token and retry
+          await refreshFirebaseToken();
+          return handleAuthenticatedRequest(url, options);
+        case "INSUFFICIENT_PERMISSIONS":
+          // Redirect to unauthorized page
+          window.location.href = "/unauthorized";
+          break;
+        default:
+          console.error("API Error:", data.error.message);
+      }
+    }
+
+    return data;
+  } catch (error) {
+    console.error("Network Error:", error);
+    throw error;
+  }
+}
+```
+
+### Validation Error Handling
+
+```javascript
+function handleValidationErrors(errorData) {
+  if (errorData.error.code === "VALIDATION_ERROR") {
+    const details = errorData.error.details;
+
+    // Display field-specific errors
+    Object.keys(details).forEach((field) => {
+      const errorMessage = details[field];
+      displayFieldError(field, errorMessage);
+    });
+  }
+}
+```
+
+## 🎯 Architecture Benefits
+
+### 1. Normalized Data Structure
+
+- **Single Source of Truth**: User data stored once in `users/{userId}`
+- **Automatic Consistency**: Profile updates reflect everywhere instantly
+- **No Data Drift**: Eliminates synchronization issues
+
+### 2. Performance Optimizations
+
+- **On-Demand Population**: User data fetched only when needed
+- **Efficient Queries**: Minimal database operations
+- **Smart Caching**: Backend handles caching automatically
+
+### 3. Scalability Features
+
+- **Reference-Based Roles**: Event roles store only user references
+- **Reduced Storage**: No duplicate user data across collections
+- **Better Performance**: Faster queries and reduced bandwidth
+
+### 4. Developer Experience
+
+- **Consistent APIs**: All endpoints follow same response format
+- **Clear Error Messages**: Detailed error codes and descriptions
+- **Comprehensive Documentation**: Complete API reference with examples
+
+## 📊 Testing Checklist
+
+### ✅ Avatar Persistence Testing
+
+1. Update avatar in profile
+2. Logout and login again
+3. Verify avatar persists correctly
+4. Check avatar appears in event roles
+
+### ✅ Social Links Testing
+
+1. Update social links in profile
+2. View event with user as organizer/volunteer
+3. Verify social links appear in event roles
+4. Test legacy format conversion
+
+### ✅ Data Consistency Testing
+
+1. Update user profile (name, bio, avatar)
+2. Check event roles show updated data
+3. Verify no stale data in any collection
+4. Test real-time data population
+
+### ✅ Role Management Testing
+
+1. Assign role to user for event
+2. Update user profile
+3. Verify role shows updated user data
+4. Test role permissions and expiration
+
+## 🔧 Development Setup
+
+### Environment Variables
+
+```bash
+# Firebase Configuration
+FIREBASE_PROJECT_ID=your-project-id
+FIREBASE_CLIENT_EMAIL=your-service-account-email
+FIREBASE_PRIVATE_KEY=your-private-key
+FIREBASE_DATABASE_URL=https://your-project.firebaseio.com
+FIREBASE_STORAGE_BUCKET=your-project.appspot.com
+
+# API Configuration
+PORT=3001
+NODE_ENV=development
+FRONTEND_URL=http://localhost:5174
+
+# Security
+ARCJET_KEY=your-arcjet-key
+```
+
+### Quick Start
+
+```bash
+# Clone repository
+git clone https://github.com/your-org/mindquest-backend.git
+cd mindquest-backend
+
+# Install dependencies
+pnpm install
+
+# Set up environment
+cp .env.example .env
+# Edit .env with your configuration
+
+# Start development server
+pnpm dev
+
+# Test API
+curl http://localhost:3001/health
+```
+
+## 📈 Performance Metrics
+
+### Response Times (Target)
+
+- **Authentication**: < 200ms
+- **Profile Updates**: < 300ms
+- **Event Retrieval**: < 500ms
+- **Role Assignment**: < 400ms
+
+### Throughput (Target)
+
+- **Concurrent Users**: 1000+
+- **Requests per Second**: 100+
+- **Database Connections**: Pooled and optimized
+
+### Availability
+
+- **Uptime Target**: 99.9%
+- **Error Rate**: < 0.1%
+- **Recovery Time**: < 5 minutes
+
+## 🛡️ Security Features
+
+### Authentication & Authorization
+
+- **Firebase Authentication**: Industry-standard security
+- **Role-Based Access**: User, Admin, SuperAdmin roles
+- **Token Validation**: Automatic token verification
+- **Session Management**: Secure session handling
+
+### Data Protection
+
+- **Input Validation**: Comprehensive request validation
+- **XSS Prevention**: Output sanitization
+- **SQL Injection**: Firestore NoSQL protection
+- **Rate Limiting**: Adaptive rate limiting by user role
+
+### Monitoring & Analytics
+
+- **Security Analytics**: Real-time threat detection
+- **Audit Logging**: Complete action tracking
+- **Anomaly Detection**: Suspicious activity alerts
+- **Geographic Restrictions**: Location-based access control
+
+## 📞 Support
+
+### Getting Help
+
+1. **Documentation**: Check this comprehensive API documentation
+2. **Error Codes**: Review the complete error code reference
+3. **Examples**: Use the provided code examples
+4. **Testing**: Follow the testing checklist
+
+### Contact Information
+
+- **Email**: support@mindquest.com
+- **Repository**: Create an issue on GitHub
+- **Documentation**: Check the README.md file
+- **Community**: Join our developer Discord
+
+### Reporting Issues
+
+When reporting issues, please include:
+
+- API endpoint and method
+- Request payload
+- Response received
+- Error codes and messages
+- Steps to reproduce
+
+---
+
+**Last Updated**: January 2024
+**API Version**: 1.0
+**Documentation Version**: 2.0

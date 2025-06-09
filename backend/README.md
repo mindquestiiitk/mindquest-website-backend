@@ -359,6 +359,33 @@ node src/scripts/deploy-rules.js
 
 ## Testing
 
+### Admin Dashboard Testing
+
+Access the admin dashboard integrated in the client application:
+
+```bash
+# Start the backend server
+npm start
+
+# Start the client application (in separate terminal)
+cd ../client/client
+npm run dev
+
+# Open browser and navigate to:
+# http://localhost:5174/admin-dashboard
+```
+
+The dashboard provides:
+
+- 🔐 Integrated Firebase authentication
+- 🎉 Event management (create, view, manage events)
+- 👑 Role assignment and management
+- 🧪 Automated test suite for data consistency
+- 📊 Real-time API status monitoring
+- 🎯 React-based interface with better UX
+
+### Command Line Testing
+
 ```bash
 # Run all tests
 npm test
