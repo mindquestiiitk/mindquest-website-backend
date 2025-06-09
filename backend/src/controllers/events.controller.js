@@ -55,25 +55,4 @@ export class EventsController {
     // Use standardized response format
     successResponse(res, event, "Event retrieved successfully");
   });
-
-  /**
-   * Seed events database
-   * @route POST /events/seed
-   */
-  seedEvents = catchAsync(async (req, res) => {
-    logger.info("Starting events seeding process", {
-      path: req.path,
-      method: req.method,
-    });
-
-    await this.eventsService.seedEvents();
-    const events = await this.eventsService.getAllEvents();
-
-    logger.info(`Seeding complete, ${events.length} events available`);
-    successResponse(
-      res,
-      { count: events.length },
-      "Events seeded successfully"
-    );
-  });
 }

@@ -12,42 +12,9 @@
  */
 
 import { authService } from "../services/auth.service.js";
-import { validateRequest } from "../utils/validation.js";
-import { catchAsync } from "../utils/error.js";
+import { catchAsync, createError } from "../utils/error.js";
+import { validateAndSanitize } from "../utils/validator.js";
 import logger from "../utils/logger.js";
-
-// Performance monitoring
-const PERF_MARKERS = new Map();
-
-/**
- * Simple performance monitoring for auth operations
- */
-const perf = {
-  start: (name) => {
-    const startTime = Date.now();
-    PERF_MARKERS.set(name, startTime);
-    return startTime;
-  },
-  end: (name, userId = null) => {
-    const startTime = PERF_MARKERS.get(name);
-    if (startTime) {
-      const duration = Date.now() - startTime;
-      const logData = {
-        duration: `${duration}ms`,
-        operation: name,
-      };
-
-      if (userId) {
-        logData.userId = userId;
-      }
-
-      logger.debug(`⏱️ Auth operation timing: ${name}`, logData);
-      PERF_MARKERS.delete(name);
-      return duration;
-    }
-    return 0;
-  },
-};
 
 export class AuthController {
   constructor() {
@@ -59,10 +26,6 @@ export class AuthController {
    * Optimized for performance and reliability
    */
   register = catchAsync(async (req, res, next) => {
-    // Start performance monitoring
-    const perfId = `register-${Date.now()}`;
-    perf.start(perfId);
-
     try {
       const {
         email,
@@ -90,9 +53,6 @@ export class AuthController {
       if (idToken || req.body.tokenBased || provider) {
         // Firebase ID token registration (from client)
         try {
-          // Start token verification timing
-          perf.start(`${perfId}-token-verify`);
-
           // Get token from request body or Authorization header
           let tokenToVerify = idToken;
 
@@ -117,13 +77,10 @@ export class AuthController {
             });
           }
 
-          // Verify the token with optimized performance
+          // Verify the token
           const decodedToken = await this.authService.auth.verifyIdToken(
             tokenToVerify
           );
-
-          // End token verification timing
-          perf.end(`${perfId}-token-verify`);
 
           if (!decodedToken || !decodedToken.uid) {
             return res.status(401).json({
@@ -135,16 +92,10 @@ export class AuthController {
             });
           }
 
-          // Start user check timing
-          perf.start(`${perfId}-user-check`);
-
           // Check if user already exists in Firestore
           const userDoc = await this.authService.usersCollection
             .doc(decodedToken.uid)
             .get();
-
-          // End user check timing
-          perf.end(`${perfId}-user-check`, decodedToken.uid);
 
           if (userDoc.exists) {
             // User already exists, return success with existing user data
@@ -152,9 +103,6 @@ export class AuthController {
               userId: decodedToken.uid,
               email: decodedToken.email,
             });
-
-            // Start profile update timing
-            perf.start(`${perfId}-profile-update`);
 
             // Ensure user profile and role collections are properly set up
             await this.authService.ensureUserProfile(decodedToken.uid, {
@@ -167,28 +115,16 @@ export class AuthController {
               emailVerified: emailVerified || decodedToken.email_verified,
             });
 
-            // End profile update timing
-            perf.end(`${perfId}-profile-update`, decodedToken.uid);
-
-            // Start session creation timing
-            perf.start(`${perfId}-session-create`);
-
             // Create or update session
             await this.authService.ensureUserSession(
               decodedToken.uid,
               enhancedDeviceInfo
             );
 
-            // End session creation timing
-            perf.end(`${perfId}-session-create`, decodedToken.uid);
-
             // Get updated user data
             const userData = await this.authService.getUserById(
               decodedToken.uid
             );
-
-            // End overall performance monitoring
-            perf.end(perfId, decodedToken.uid);
 
             return res.status(200).json({
               success: true,
@@ -196,9 +132,6 @@ export class AuthController {
               data: { user: userData },
             });
           }
-
-          // Start profile creation timing
-          perf.start(`${perfId}-profile-create`);
 
           // Create new user profile
           const userData = await this.authService.ensureUserProfile(
@@ -215,37 +148,22 @@ export class AuthController {
             }
           );
 
-          // End profile creation timing
-          perf.end(`${perfId}-profile-create`, decodedToken.uid);
-
-          // Start session creation timing
-          perf.start(`${perfId}-session-create`);
-
           // Create session
           await this.authService.ensureUserSession(
             decodedToken.uid,
             enhancedDeviceInfo
           );
 
-          // End session creation timing
-          perf.end(`${perfId}-session-create`, decodedToken.uid);
-
           logger.info("User registered with Firebase token", {
             userId: decodedToken.uid,
             email: userData.email,
           });
-
-          // End overall performance monitoring
-          perf.end(perfId, decodedToken.uid);
 
           return res.status(201).json({
             success: true,
             data: { user: userData },
           });
         } catch (tokenError) {
-          // End performance monitoring on error
-          perf.end(perfId);
-
           logger.error("Token-based registration error", {
             error: tokenError.message,
             code: tokenError.code,
@@ -263,9 +181,6 @@ export class AuthController {
       } else {
         // Traditional email/password registration
         try {
-          // Start email registration timing
-          perf.start(`${perfId}-email-registration`);
-
           // Use the schemas from validation-schemas.js which now handles conditional validation
           // The validation is now handled by the validateRequest middleware in routes
           // No need for additional validation here
@@ -278,20 +193,11 @@ export class AuthController {
             enhancedDeviceInfo
           );
 
-          // End email registration timing
-          perf.end(`${perfId}-email-registration`);
-
-          // End overall performance monitoring
-          perf.end(perfId, result?.user?.id);
-
           res.status(201).json({
             success: true,
             data: result,
           });
         } catch (validationError) {
-          // End performance monitoring on error
-          perf.end(perfId);
-
           // Handle validation errors specifically
           if (validationError.statusCode === 400) {
             return res.status(400).json({
@@ -314,9 +220,6 @@ export class AuthController {
         }
       }
     } catch (error) {
-      // End performance monitoring on error
-      perf.end(perfId);
-
       logger.error("Registration error", {
         error: error.message,
         code: error.code,
@@ -332,18 +235,10 @@ export class AuthController {
    * Optimized for performance and security
    */
   login = catchAsync(async (req, res, next) => {
-    // Start performance monitoring
-    const perfId = `login-${Date.now()}`;
-    perf.start(perfId);
-
     try {
       const { email, password } = req.body;
 
-      // Validate request
-      validateRequest(req, {
-        email: { type: "string", required: true },
-        password: { type: "string", required: true },
-      });
+      // Validation is handled by middleware
 
       // Log login attempt for debugging (with limited PII)
       logger.debug("Login attempt", {
@@ -364,20 +259,11 @@ export class AuthController {
         timestamp: new Date().toISOString(),
       };
 
-      // Start login timing
-      perf.start(`${perfId}-auth`);
-
       const result = await this.authService.loginWithEmailPassword(
         email,
         password,
         deviceInfo
       );
-
-      // End login timing
-      perf.end(`${perfId}-auth`, result.user.id);
-
-      // Start session management timing
-      perf.start(`${perfId}-session`);
 
       // Ensure a session document exists in Firestore
       try {
@@ -420,9 +306,6 @@ export class AuthController {
         });
       }
 
-      // End session management timing
-      perf.end(`${perfId}-session`, result.user.id);
-
       // Set secure HTTP-only cookie with refresh token
       // Use SameSite=Lax for better compatibility with modern browsers while maintaining security
       res.cookie("refresh_token", result.refreshToken, {
@@ -447,9 +330,6 @@ export class AuthController {
         refreshToken: undefined,
       };
 
-      // End overall performance monitoring
-      perf.end(perfId, result.user.id);
-
       res.json({
         success: true,
         data: {
@@ -464,9 +344,6 @@ export class AuthController {
         email: result.user.email,
       });
     } catch (error) {
-      // End performance monitoring on error
-      perf.end(perfId);
-
       // Provide user-friendly error messages
       if (
         error.code === "auth/wrong-password" ||
@@ -612,19 +489,28 @@ export class AuthController {
    */
   updateProfile = catchAsync(async (req, res, next) => {
     try {
-      const { name, email, avatarId } = req.body;
+      const { name, email, avatarId, bio, socialLinks } = req.body;
 
       // Validate request
-      validateRequest(req, {
+      const validatedData = validateAndSanitize(req.body, {
         name: { type: "string", required: false },
         email: { type: "string", required: false },
         avatarId: { type: "string", required: false },
+        bio: { type: "string", required: false },
+        socialLinks: { type: "object", required: false },
       });
+
+      // Validate social links if provided
+      if (socialLinks) {
+        this.validateSocialLinks(socialLinks);
+      }
 
       const user = await this.authService.updateUserProfile(req.user.id, {
         name,
         email,
         avatarId,
+        bio,
+        socialLinks,
       });
 
       res.json({
@@ -642,6 +528,70 @@ export class AuthController {
   });
 
   /**
+   * Validate social media links
+   * @private
+   */
+  validateSocialLinks(socialLinks) {
+    const allowedPlatforms = [
+      "linkedin",
+      "twitter",
+      "instagram",
+      "github",
+      "website",
+      "facebook",
+      "youtube",
+    ];
+    const urlRegex =
+      /^https?:\/\/(www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_\+.~#?&//=]*)$/;
+
+    for (const [platform, url] of Object.entries(socialLinks)) {
+      if (!allowedPlatforms.includes(platform)) {
+        throw createError(400, `Invalid social media platform: ${platform}`);
+      }
+
+      if (url && typeof url === "string" && url.trim() !== "") {
+        if (!urlRegex.test(url)) {
+          throw createError(400, `Invalid URL format for ${platform}: ${url}`);
+        }
+
+        // Platform-specific validation
+        if (platform === "linkedin" && !url.includes("linkedin.com")) {
+          throw createError(400, "LinkedIn URL must be from linkedin.com");
+        }
+        if (
+          platform === "twitter" &&
+          !url.includes("twitter.com") &&
+          !url.includes("x.com")
+        ) {
+          throw createError(
+            400,
+            "Twitter URL must be from twitter.com or x.com"
+          );
+        }
+        if (platform === "instagram" && !url.includes("instagram.com")) {
+          throw createError(400, "Instagram URL must be from instagram.com");
+        }
+        if (platform === "github" && !url.includes("github.com")) {
+          throw createError(400, "GitHub URL must be from github.com");
+        }
+        if (platform === "facebook" && !url.includes("facebook.com")) {
+          throw createError(400, "Facebook URL must be from facebook.com");
+        }
+        if (
+          platform === "youtube" &&
+          !url.includes("youtube.com") &&
+          !url.includes("youtu.be")
+        ) {
+          throw createError(
+            400,
+            "YouTube URL must be from youtube.com or youtu.be"
+          );
+        }
+      }
+    }
+  }
+
+  /**
    * Send a password reset email
    */
   forgotPassword = catchAsync(async (req, res, next) => {
@@ -649,7 +599,7 @@ export class AuthController {
       const { email } = req.body;
 
       // Validate request
-      validateRequest(req, {
+      const validatedData = validateAndSanitize(req.body, {
         email: { type: "string", required: true },
       });
 
@@ -676,7 +626,7 @@ export class AuthController {
       const { token, password } = req.body;
 
       // Validate request
-      validateRequest(req, {
+      const validatedData = validateAndSanitize(req.body, {
         token: { type: "string", required: true },
         password: { type: "string", required: true, min: 6 },
       });
@@ -1014,7 +964,7 @@ export class AuthController {
       const { role } = req.body;
 
       // Validate request
-      validateRequest(req, {
+      const validatedData = validateAndSanitize(req.body, {
         role: { type: "string", required: true },
       });
 

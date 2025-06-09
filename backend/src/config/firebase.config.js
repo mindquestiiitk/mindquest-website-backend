@@ -21,29 +21,6 @@ import { connectStorageEmulator } from "firebase/storage";
 import logger from "../utils/logger.js";
 import config from "./config.js";
 
-// Performance monitoring
-const PERF_MARKERS = new Map();
-
-/**
- * Simple performance monitoring
- */
-const perf = {
-  mark: (name) => {
-    PERF_MARKERS.set(name, Date.now());
-    return () => perf.measure(name);
-  },
-  measure: (name) => {
-    const start = PERF_MARKERS.get(name);
-    if (start) {
-      const duration = Date.now() - start;
-      logger.debug(`⏱️ ${name}: ${duration}ms`);
-      PERF_MARKERS.delete(name);
-      return duration;
-    }
-    return 0;
-  },
-};
-
 // Firebase configuration object
 const firebaseConfig = {
   // Basic configuration
@@ -86,7 +63,6 @@ let clientApp, clientAuth, clientDb, clientStorage;
 
 // Initialize Firebase Admin SDK
 try {
-  const adminInitMark = perf.mark("admin-sdk-init");
   logger.info("Initializing Firebase Admin SDK");
 
   if (!firebaseConfig.projectId) {
@@ -169,7 +145,6 @@ try {
     return db;
   });
 
-  adminInitMark();
   logger.info("Firebase Admin SDK initialized successfully", {
     projectId: firebaseConfig.projectId,
   });
@@ -183,7 +158,6 @@ try {
 
 // Initialize Firebase Client SDK
 try {
-  const clientInitMark = perf.mark("client-sdk-init");
   logger.info("Initializing Firebase Client SDK");
 
   if (!firebaseConfig.apiKey || !firebaseConfig.projectId) {
@@ -262,7 +236,6 @@ try {
     }
   }
 
-  clientInitMark();
   logger.info("Firebase Client SDK initialized successfully", {
     projectId: firebaseConfig.projectId,
     useEmulator: config.firebase.useEmulator || false,
@@ -276,26 +249,11 @@ try {
   throw error;
 }
 
-// Export Firebase services with performance monitoring
+// Export Firebase services
 export const admin = {
   app: adminApp,
   auth: adminAuth,
   db: adminDb,
-
-  // Add performance-wrapped methods for common operations
-  async verifyIdToken(token, checkRevoked = true) {
-    const startTime = Date.now();
-    try {
-      const result = await adminAuth.verifyIdToken(token, checkRevoked);
-      logger.debug(`⏱️ verifyIdToken completed in ${Date.now() - startTime}ms`);
-      return result;
-    } catch (error) {
-      logger.error(`verifyIdToken failed after ${Date.now() - startTime}ms`, {
-        error: error.message,
-      });
-      throw error;
-    }
-  },
 
   // Add connection status check
   isConnected() {
@@ -308,24 +266,6 @@ export const client = {
   auth: clientAuth,
   db: clientDb,
   storage: clientStorage,
-
-  // Add performance-wrapped methods for common operations
-  async signInWithCustomToken(token) {
-    const startTime = Date.now();
-    try {
-      const result = await clientAuth.signInWithCustomToken(token);
-      logger.debug(
-        `⏱️ signInWithCustomToken completed in ${Date.now() - startTime}ms`
-      );
-      return result;
-    } catch (error) {
-      logger.error(
-        `signInWithCustomToken failed after ${Date.now() - startTime}ms`,
-        { error: error.message }
-      );
-      throw error;
-    }
-  },
 
   // Add connection status check
   isConnected() {

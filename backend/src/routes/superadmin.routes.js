@@ -31,4 +31,18 @@ router.post("/remove", superadminController.removeSuperAdmin);
 router.get("/list", superadminController.listSuperAdmins);
 router.get("/check/:userId", superadminController.checkSuperAdmin);
 
+// ==========================================
+// TESTING FEATURE: User Management System
+// ==========================================
+// These routes provide comprehensive user management for superadmins
+// Can be easily removed by deleting these routes
+
+// User management routes
+router.get("/users", superadminController.getAllUsers);
+router.get("/admins", superadminController.getAllAdmins);
+router.post("/promote-admin", superadminController.promoteToAdmin);
+router.post("/demote-admin", superadminController.demoteAdmin);
+router.put("/user-permissions", superadminController.updateUserPermissions);
+router.delete("/user/:userId", superadminController.deleteUser);
+
 export default router;

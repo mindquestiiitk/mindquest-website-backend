@@ -1,22 +1,23 @@
 import { UserRole } from "./auth.service.js";
 import { admin, db } from "../config/firebase.config.js";
 import logger from "../utils/logger.js";
+import { BaseService } from "./base.service.js";
 
 // Use the admin.db instance that's already initialized
 const counselorDb = admin.db;
 
-export class CounselorService {
+export class CounselorService extends BaseService {
+  constructor() {
+    super("counselors");
+  }
   async getCounselorProfile(uid) {
     try {
-      const counselorDoc = await counselorDb
-        .collection("counselors")
-        .doc(uid)
-        .get();
-      if (!counselorDoc.exists) {
+      const counselor = await this.getById(uid);
+      if (!counselor) {
         logger.warn(`Counselor not found: ${uid}`);
         throw new Error("Counselor not found");
       }
-      return { uid, ...counselorDoc.data() };
+      return counselor;
     } catch (error) {
       logger.error(`Failed to get counselor profile: ${error.message}`, {
         uid,
@@ -27,14 +28,7 @@ export class CounselorService {
 
   async updateCounselorProfile(uid, data) {
     try {
-      await counselorDb
-        .collection("counselors")
-        .doc(uid)
-        .update({
-          ...data,
-          updatedAt: new Date(),
-        });
-      return this.getCounselorProfile(uid);
+      return await this.update(uid, data);
     } catch (error) {
       throw new Error(`Failed to update counselor profile: ${error.message}`);
     }
@@ -133,16 +127,9 @@ export class CounselorService {
 
   async searchCounselors(query) {
     try {
-      const counselors = await db
-        .collection("counselors")
-        .where("specialties", "array-contains", query)
-        .limit(10)
-        .get();
-
-      return counselors.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
+      return await this.findWhere("specialties", "array-contains", query, {
+        limit: 10,
+      });
     } catch (error) {
       throw new Error(`Failed to search counselors: ${error.message}`);
     }
@@ -150,15 +137,7 @@ export class CounselorService {
 
   async getAvailableCounselors() {
     try {
-      const counselors = await db
-        .collection("counselors")
-        .where("isAvailable", "==", true)
-        .get();
-
-      return counselors.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
+      return await this.findWhere("isAvailable", "==", true);
     } catch (error) {
       throw new Error(`Failed to get available counselors: ${error.message}`);
     }

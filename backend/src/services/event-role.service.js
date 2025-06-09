@@ -41,9 +41,14 @@ export class EventRoleService {
         }
       }
 
-      // Ensure expiration is a valid date
+      // Ensure expiration is a valid date or set default
       let expiration = roleData.expiration;
-      if (typeof expiration === "string") {
+
+      // If no expiration provided, set default to 1 year from now
+      if (!expiration) {
+        expiration = new Date();
+        expiration.setFullYear(expiration.getFullYear() + 1);
+      } else if (typeof expiration === "string") {
         expiration = new Date(expiration);
       }
 
@@ -285,31 +290,26 @@ export class EventRoleService {
 
   /**
    * Update an existing role
-   * @param {string} roleId - Role ID
+   * @param {string} eventId - Event ID
+   * @param {string} userId - User ID (role ID in subcollection)
    * @param {Object} roleData - Updated role data
    * @returns {Promise<Object>} Updated role
    */
-  async updateRole(roleId, roleData) {
+  async updateRole(eventId, userId, roleData) {
     try {
-      logger.info("Updating role", { roleId, roleData });
+      logger.info("Updating role", { eventId, userId, roleData });
 
-      // Get existing role
-      const existingRole = await withRetry(() =>
-        this.eventRoleModel.collection.doc(roleId).get()
-      );
-
-      if (!existingRole.exists) {
-        throw new AppError(404, "Role not found", "role_not_found");
+      // Validate event exists
+      const eventExists = await this.validateEvent(eventId);
+      if (!eventExists) {
+        throw new AppError(404, "Event not found", "event_not_found");
       }
 
       // Prepare update data
-      const updateData = {
-        ...roleData,
-        updatedAt: new Date().toISOString(),
-      };
+      const updateData = { ...roleData };
 
       // If role type is changing, update role level
-      if (roleData.role && roleData.role !== existingRole.data().role) {
+      if (roleData.role) {
         updateData.roleLevel = this.eventRoleModel.getRoleLevel(roleData.role);
       }
 
@@ -331,30 +331,93 @@ export class EventRoleService {
         updateData.expiration = expiration.toISOString();
       }
 
-      // Update role
-      await withRetry(() =>
-        this.eventRoleModel.collection.doc(roleId).update(updateData)
+      // Update role using the new model method
+      const updatedRole = await this.eventRoleModel.updateRole(
+        eventId,
+        userId,
+        updateData
       );
-
-      // Get updated role
-      const updatedRole = await withRetry(() =>
-        this.eventRoleModel.collection.doc(roleId).get()
-      );
-
-      const role = {
-        id: updatedRole.id,
-        ...updatedRole.data(),
-      };
 
       // Enrich role with user and event data
-      const enrichedRole = (await this.enrichRolesWithData([role]))[0];
+      const enrichedRole = (await this.enrichRolesWithData([updatedRole]))[0];
 
-      logger.info("Role updated successfully", { roleId });
+      logger.info("Role updated successfully", { eventId, userId });
       return enrichedRole;
     } catch (error) {
       logger.error("Failed to update role", {
         error: error.message,
-        roleId,
+        eventId,
+        userId,
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Delete all roles for a specific event
+   * @param {string} eventId - Event ID
+   * @returns {Promise<number>} Number of deleted roles
+   */
+  async deleteEventRoles(eventId) {
+    try {
+      logger.info("Deleting all roles for event", { eventId });
+
+      // Get the event roles subcollection
+      const eventRolesCollection =
+        this.eventRoleModel.getEventRolesCollection(eventId);
+      const snapshot = await withRetry(() => eventRolesCollection.get());
+
+      if (snapshot.empty) {
+        logger.info("No roles found for event", { eventId });
+        return 0;
+      }
+
+      // Delete all roles in batch
+      const batch = db.batch();
+      snapshot.docs.forEach((doc) => {
+        batch.delete(doc.ref);
+      });
+
+      await withRetry(() => batch.commit());
+
+      const deletedCount = snapshot.docs.length;
+      logger.info(`Deleted ${deletedCount} roles for event`, { eventId });
+      return deletedCount;
+    } catch (error) {
+      logger.error("Failed to delete event roles", {
+        error: error.message,
+        eventId,
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Delete a specific role for a user in an event
+   * @param {string} eventId - Event ID
+   * @param {string} userId - User ID
+   * @returns {Promise<boolean>} Success status
+   */
+  async deleteRole(eventId, userId) {
+    try {
+      logger.info("Deleting role for user in event", { eventId, userId });
+
+      // Validate event exists
+      const eventExists = await this.validateEvent(eventId);
+      if (!eventExists) {
+        throw new AppError(404, "Event not found", "event_not_found");
+      }
+
+      // Delete the role
+      const success = await this.eventRoleModel.deleteRole(eventId, userId);
+
+      logger.info("Role deleted successfully", { eventId, userId });
+      return success;
+    } catch (error) {
+      logger.error("Failed to delete role", {
+        error: error.message,
+        eventId,
+        userId,
       });
       throw error;
     }

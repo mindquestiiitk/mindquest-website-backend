@@ -12,7 +12,7 @@
  * });
  */
 
-import { db, auth } from "../config/firebase.config.js";
+import { db } from "../config/firebase.config.js";
 import logger from "./logger.js";
 
 /**
@@ -57,24 +57,70 @@ export async function cleanupExpiredTokens() {
 }
 
 /**
- * Run token cleanup task
+ * Clean up expired sessions
+ * @returns {Promise<number>} Number of sessions cleaned up
+ */
+export async function cleanupExpiredSessions() {
+  try {
+    const now = new Date().toISOString();
+    const sessionsRef = db.collection("sessions");
+
+    // Find expired sessions
+    const expiredSessionsSnapshot = await sessionsRef
+      .where("expiresAt", "<", now)
+      .get();
+
+    if (expiredSessionsSnapshot.empty) {
+      logger.info("No expired sessions found");
+      return 0;
+    }
+
+    // Delete expired sessions in batches
+    const batch = db.batch();
+    let count = 0;
+
+    expiredSessionsSnapshot.docs.forEach((doc) => {
+      batch.delete(doc.ref);
+      count++;
+    });
+
+    await batch.commit();
+
+    logger.info(`Cleaned up ${count} expired sessions`);
+    return count;
+  } catch (error) {
+    logger.error("Error cleaning up expired sessions", {
+      error: error.message,
+      stack: error.stack,
+    });
+    throw error;
+  }
+}
+
+/**
+ * Run complete session and token cleanup
  * @returns {Promise<Object>} Results of cleanup operations
  */
 export async function runTokenCleanup() {
   try {
-    logger.info("Starting token cleanup");
+    logger.info("Starting session and token cleanup");
 
-    const expiredCount = await cleanupExpiredTokens();
+    const [expiredTokens, expiredSessions] = await Promise.all([
+      cleanupExpiredTokens(),
+      cleanupExpiredSessions(),
+    ]);
 
     const results = {
-      expiredTokens: expiredCount,
+      expiredTokens,
+      expiredSessions,
+      total: expiredTokens + expiredSessions,
       timestamp: new Date().toISOString(),
     };
 
-    logger.info("Token cleanup completed", results);
+    logger.info("Session and token cleanup completed", results);
     return results;
   } catch (error) {
-    logger.error("Token cleanup failed", {
+    logger.error("Session and token cleanup failed", {
       error: error.message,
       stack: error.stack,
     });

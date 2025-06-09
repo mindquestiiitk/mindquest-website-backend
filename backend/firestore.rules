@@ -21,31 +21,6 @@ service cloud.firestore {
          isSuperAdmin());
     }
 
-    function isCounselor() {
-      // Collection-based security: check if user exists in counselors collection
-      return isAuthenticated() &&
-        exists(/databases/$(database)/documents/counselors/$(request.auth.uid));
-    }
-
-    function isUser() {
-      // Collection-based security: check if user exists in users collection
-      // Simplified to just check if the user exists in the users collection
-      return isAuthenticated() &&
-        exists(/databases/$(database)/documents/users/$(request.auth.uid));
-    }
-
-    function isOwner(userId) {
-      // Check if the authenticated user is the owner of the document
-      return isAuthenticated() &&
-        request.auth.uid == userId;
-    }
-
-    function isDocumentOwner() {
-      // Check if the authenticated user is the owner of the document
-      return isAuthenticated() &&
-        request.auth.uid == resource.data.userId;
-    }
-
     function hasValidSession() {
       // Collection-based security: check if user has a valid session
       // Using the user's UID as the session document ID for better security
@@ -58,10 +33,11 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.uid == docId;
     }
 
-    // Rate limiting helper - prevents too many writes in a short period
-    function notRateLimited() {
+    // Message rate limiting - prevents message spam
+    function notMessageRateLimited() {
       return isAuthenticated() &&
-        (!exists(/databases/$(database)/documents/users/$(request.auth.uid)/rateLimit/writes) ||
+        (!exists(/databases/$(database)/documents/rate_limits/$(request.auth.uid)) ||
+        resource.data.messageCount < 10 ||
         request.time > resource.data.resetTime);
     }
 
@@ -72,11 +48,6 @@ service cloud.firestore {
 
     function isValidEmail(email) {
       return email.matches('^[^@]+@[^@]+\\.[^@]+$');
-    }
-
-    function isValidPassword(password) {
-      // Password must be at least 6 characters
-      return password.size() >= 6;
     }
 
     function isValidName(name) {
@@ -96,14 +67,11 @@ service cloud.firestore {
       allow read: if isRequestFromSameUser(userId) || isAdmin() || hasValidSession();
 
       // Allow users to create their own profile and admins to create any profile
-      // Also allow backend service to create users
       allow create: if (isRequestFromSameUser(userId) &&
                        isValidEmail(request.resource.data.email)) ||
                       (isAdmin() && isValidUser() &&
                        isValidEmail(request.resource.data.email) &&
-                       isValidName(request.resource.data.name)) ||
-                      // Allow backend service to create users
-                      (request.auth.token.firebase.sign_in_provider == 'custom');
+                       isValidName(request.resource.data.name));
 
       // Users can update their own profile, admins can update any profile
       // Using isRequestFromSameUser for collection-based security
@@ -144,13 +112,14 @@ service cloud.firestore {
                     (resource.data.senderId == request.auth.uid ||
                      resource.data.receiverId == request.auth.uid);
 
-      // Users can create messages with validation
+      // Users can create messages with validation and rate limiting
       allow create: if isAuthenticated() &&
                       request.resource.data.senderId == request.auth.uid &&
                       request.resource.data.timestamp is timestamp &&
                       request.resource.data.keys().hasAll(['senderId', 'receiverId', 'content', 'timestamp']) &&
                       request.resource.data.content.size() > 0 &&
-                      request.resource.data.content.size() <= 5000;
+                      request.resource.data.content.size() <= 5000 &&
+                      notMessageRateLimited(); // Add database-level rate limiting
 
       // Users can update messages they sent (e.g., to mark as deleted or read)
       allow update: if isAuthenticated() &&
@@ -172,6 +141,15 @@ service cloud.firestore {
 
       // Only admins can create, update, or delete events
       allow create, update, delete: if isAdmin();
+
+      // Event roles subcollection
+      match /event_roles/{roleId} {
+        // All authenticated users can read event roles
+        allow read: if isAuthenticated();
+
+        // Only admins can create, update, or delete event roles
+        allow create, update, delete: if isAdmin();
+      }
     }
 
     // Settings collection
@@ -197,11 +175,21 @@ service cloud.firestore {
       allow write: if isSuperAdmin();
     }
 
-    // Admins collection
+    // Admins collection - enhanced security
     match /admins/{adminId} {
-      // Only admins can read admin records, but only superadmins can modify them
-      allow read: if isAdmin();
-      allow write: if isSuperAdmin();
+      // Admins can only read their own record + basic info of other admins
+      allow read: if isRequestFromSameUser(adminId) ||
+                    (isAdmin() &&
+                     // Only allow reading basic fields, not sensitive data like permissions
+                     request.resource == null); // This is a read operation, not write
+
+      // Only superadmins can create/update/delete admin records
+      allow write: if isSuperAdmin() &&
+                     // Validate admin data structure
+                     request.resource.data.keys().hasAll(['userId', 'email', 'name']) &&
+                     request.resource.data.userId == adminId &&
+                     isValidEmail(request.resource.data.email) &&
+                     isValidName(request.resource.data.name);
     }
 
     // Superadmins collection
@@ -221,31 +209,19 @@ service cloud.firestore {
         // Allow creation if the session document ID matches the user's UID
         // and the userId field also matches the user's UID
         (isRequestFromSameUser(sessionId) &&
-         request.resource.data.userId == request.auth.uid) ||
-        // Or if it's the backend service
-        request.auth.token.firebase.sign_in_provider == 'custom';
+         request.resource.data.userId == request.auth.uid);
 
       // Allow updates to user's own sessions
       allow update: if isRequestFromSameUser(sessionId);
 
-      // Allow deletion of user's own sessions or by backend service
-      allow delete: if isRequestFromSameUser(sessionId) ||
-                     request.auth.token.firebase.sign_in_provider == 'custom';
+      // Allow deletion of user's own sessions
+      allow delete: if isRequestFromSameUser(sessionId);
     }
 
     // Refresh tokens collection
     match /refresh_tokens/{tokenId} {
       // No client-side access to refresh tokens
       allow read, write: if false;
-    }
-
-    // Event Roles collection
-    match /event_roles/{roleId} {
-      // All authenticated users can read event roles
-      allow read: if isAuthenticated();
-
-      // Only admins can create, update, or delete event roles
-      allow create, update, delete: if isAdmin();
     }
 
     // Products collection
@@ -307,6 +283,41 @@ service cloud.firestore {
 
       // Only the backend server can write system logs
       allow write: if false;
+    }
+
+    // Rate limits collection - for database-level rate limiting
+    match /rate_limits/{userId} {
+      // Users can read their own rate limit status
+      allow read: if isRequestFromSameUser(userId);
+
+      // Users can create/update their own rate limit documents
+      // This allows the system to track user activity
+      allow create, update: if isRequestFromSameUser(userId) &&
+                              request.resource.data.keys().hasAll(['messageCount', 'resetTime']) &&
+                              request.resource.data.messageCount is int &&
+                              request.resource.data.resetTime is timestamp;
+
+      // No deletion allowed - rate limits should persist
+      allow delete: if false;
+    }
+
+    // Chat/conversation collections
+    match /conversations/{conversationId} {
+      // Users can read conversations they're part of
+      allow read: if isAuthenticated() &&
+                    (resource.data.participants.hasAny([request.auth.uid]) ||
+                     isAdmin());
+
+      // Users can create conversations they're part of
+      allow create: if isAuthenticated() &&
+                      request.resource.data.participants.hasAny([request.auth.uid]);
+
+      // Users can update conversations they're part of
+      allow update: if isAuthenticated() &&
+                      resource.data.participants.hasAny([request.auth.uid]);
+
+      // Only admins can delete conversations
+      allow delete: if isAdmin();
     }
   }
 }

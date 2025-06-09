@@ -1,14 +1,18 @@
 import { db } from "../config/firebase.config.js";
 import { UserRole } from "./auth.service.js";
+import { BaseService } from "./base.service.js";
 
-export class UserService {
+export class UserService extends BaseService {
+  constructor() {
+    super("users");
+  }
   async getUserProfile(userId) {
     try {
-      const userDoc = await db.collection("users").doc(userId).get();
-      if (!userDoc.exists) {
+      const user = await this.getById(userId);
+      if (!user) {
         throw new Error("User not found");
       }
-      return { id: userDoc.id, ...userDoc.data() };
+      return user;
     } catch (error) {
       throw new Error(`Failed to get user profile: ${error.message}`);
     }
@@ -16,7 +20,13 @@ export class UserService {
 
   async updateUserProfile(userId, data) {
     try {
-      const allowedFields = ["displayName", "bio", "avatar", "preferences"];
+      const allowedFields = [
+        "displayName",
+        "bio",
+        "avatar",
+        "preferences",
+        "socialLinks",
+      ];
       const updateData = Object.keys(data)
         .filter((key) => allowedFields.includes(key))
         .reduce((obj, key) => {
@@ -55,17 +65,46 @@ export class UserService {
 
   async searchUsers(query) {
     try {
-      const users = await db
-        .collection("users")
-        .where("displayName", ">=", query)
-        .where("displayName", "<=", query + "\uf8ff")
-        .limit(10)
-        .get();
+      let usersQuery;
 
-      return users.docs.map((doc) => ({
+      if (!query || query.trim() === "") {
+        // If no query provided, return all users (limited for performance)
+        usersQuery = db.collection("users").limit(50);
+      } else {
+        // Search by displayName, email, or name fields
+        const searchTerm = query.toLowerCase().trim();
+
+        // For now, we'll get all users and filter client-side since Firestore
+        // doesn't support OR queries across different fields easily
+        usersQuery = db.collection("users").limit(100);
+      }
+
+      const snapshot = await usersQuery.get();
+      let users = snapshot.docs.map((doc) => ({
         id: doc.id,
         ...doc.data(),
+        // Remove sensitive data
+        password: undefined,
+        refreshTokens: undefined,
       }));
+
+      // If there's a search query, filter the results client-side
+      if (query && query.trim() !== "") {
+        const searchTerm = query.toLowerCase().trim();
+        users = users.filter((user) => {
+          const displayName = (user.displayName || "").toLowerCase();
+          const email = (user.email || "").toLowerCase();
+          const name = (user.name || "").toLowerCase();
+
+          return (
+            displayName.includes(searchTerm) ||
+            email.includes(searchTerm) ||
+            name.includes(searchTerm)
+          );
+        });
+      }
+
+      return users;
     } catch (error) {
       throw new Error(`Failed to search users: ${error.message}`);
     }

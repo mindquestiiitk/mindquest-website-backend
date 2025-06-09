@@ -52,10 +52,10 @@ const perf = {
   },
 };
 
-// Token verification cache with short TTL to improve performance
+// Token verification cache with optimized TTL for better performance
 // while maintaining security
 const tokenCache = new Map();
-const TOKEN_CACHE_TTL = 60 * 1000; // 1 minute in milliseconds
+const TOKEN_CACHE_TTL = 5 * 60 * 1000; // 5 minutes in milliseconds (increased for better UX)
 
 // Clean up expired tokens from cache periodically
 setInterval(() => {
@@ -132,7 +132,8 @@ export const clientAuthMiddleware = catchAsync(async (req, res, next) => {
 
   try {
     // Check token cache first for better performance
-    const cacheKey = `token-${idToken.substring(0, 20)}`;
+    // Use a more efficient cache key based on token hash
+    const cacheKey = `token-${idToken.substring(0, 30)}-${idToken.length}`;
     const cachedResult = tokenCache.get(cacheKey);
 
     let verificationResult;

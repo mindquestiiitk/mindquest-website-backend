@@ -1,6 +1,10 @@
 import { db } from "../config/firebase.config.js";
+import { BaseService } from "./base.service.js";
 
-export class ChatService {
+export class ChatService extends BaseService {
+  constructor() {
+    super("messages");
+  }
   async createMessage(senderId, receiverId, content) {
     try {
       const messageData = {
@@ -11,8 +15,7 @@ export class ChatService {
         read: false,
       };
 
-      const messageRef = await db.collection("messages").add(messageData);
-      return { id: messageRef.id, ...messageData };
+      return await this.create(messageData);
     } catch (error) {
       throw new Error(`Failed to create message: ${error.message}`);
     }

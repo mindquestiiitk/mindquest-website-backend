@@ -3,11 +3,16 @@
  * Handles business logic related to admin operations
  */
 import { db } from "../config/firebase.config.js";
-import { AppError, handleFirebaseError } from "../utils/error.js";
+import { handleFirebaseError } from "../utils/error.js";
 import { withRetry } from "../utils/firebase-utils.js";
 import logger from "../utils/logger.js";
+import { BaseService } from "./base.service.js";
 
-export class AdminService {
+export class AdminService extends BaseService {
+  constructor() {
+    super("settings"); // Use settings as the primary collection for admin operations
+  }
+
   /**
    * Get system settings
    * @returns {Promise<Object>} System settings
@@ -16,11 +21,9 @@ export class AdminService {
     try {
       logger.info("Fetching system settings");
 
-      const settingsDoc = await withRetry(() =>
-        db.collection("settings").doc("system").get()
-      );
-
-      return settingsDoc.exists ? settingsDoc.data() : {};
+      // Use the base service method for consistency
+      const settings = await this.getById("system");
+      return settings || {};
     } catch (error) {
       logger.error("Failed to get system settings", { error: error.message });
       throw handleFirebaseError(error);
@@ -103,16 +106,17 @@ export class AdminService {
     try {
       logger.info("Fetching system statistics");
 
-      const [users, counselors, messages] = await Promise.all([
-        withRetry(() => db.collection("users").count().get()),
-        withRetry(() => db.collection("counselors").count().get()),
-        withRetry(() => db.collection("messages").count().get()),
+      // Use base service count methods for consistency
+      const [totalUsers, totalCounselors, totalMessages] = await Promise.all([
+        new BaseService("users").count(),
+        new BaseService("counselors").count(),
+        new BaseService("messages").count(),
       ]);
 
       const stats = {
-        totalUsers: users.data().count,
-        totalCounselors: counselors.data().count,
-        totalMessages: messages.data().count,
+        totalUsers,
+        totalCounselors,
+        totalMessages,
         timestamp: new Date().toISOString(),
       };
 
@@ -132,14 +136,9 @@ export class AdminService {
   async getUserCount() {
     try {
       logger.info("Fetching user count");
-
-      const snapshot = await withRetry(() =>
-        db.collection("users").count().get()
-      );
-
-      const count = snapshot.data().count;
+      const userService = new BaseService("users");
+      const count = await userService.count();
       logger.debug(`User count: ${count}`);
-
       return count;
     } catch (error) {
       logger.error("Failed to get user count", { error: error.message });
@@ -154,14 +153,9 @@ export class AdminService {
   async getCounselorCount() {
     try {
       logger.info("Fetching counselor count");
-
-      const snapshot = await withRetry(() =>
-        db.collection("counselors").count().get()
-      );
-
-      const count = snapshot.data().count;
+      const counselorService = new BaseService("counselors");
+      const count = await counselorService.count();
       logger.debug(`Counselor count: ${count}`);
-
       return count;
     } catch (error) {
       logger.error("Failed to get counselor count", { error: error.message });
@@ -176,17 +170,40 @@ export class AdminService {
   async getMessageCount() {
     try {
       logger.info("Fetching message count");
-
-      const snapshot = await withRetry(() =>
-        db.collection("messages").count().get()
-      );
-
-      const count = snapshot.data().count;
+      const messageService = new BaseService("messages");
+      const count = await messageService.count();
       logger.debug(`Message count: ${count}`);
-
       return count;
     } catch (error) {
       logger.error("Failed to get message count", { error: error.message });
+      throw handleFirebaseError(error);
+    }
+  }
+
+  /**
+   * Get all users for admin dashboard
+   * @returns {Promise<Array>} Array of users
+   */
+  async getAllUsers() {
+    try {
+      logger.info("Fetching all users for admin dashboard");
+
+      const snapshot = await withRetry(() =>
+        db.collection("users").limit(100).get()
+      );
+
+      const users = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+        // Remove sensitive data
+        password: undefined,
+        refreshTokens: undefined,
+      }));
+
+      logger.debug(`Retrieved ${users.length} users for admin dashboard`);
+      return users;
+    } catch (error) {
+      logger.error("Failed to get all users", { error: error.message });
       throw handleFirebaseError(error);
     }
   }

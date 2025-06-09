@@ -29,13 +29,6 @@ router.get("/", eventsController.getAllEvents);
 // Get event by ID
 router.get("/:id", eventsController.getEventById);
 
-// Protected routes
-// Seed events (admin only)
-router.post(
-  "/seed",
-  clientAuthMiddleware,
-  clientIsAdmin,
-  eventsController.seedEvents
-);
+// Protected routes - none currently needed
 
 export default router;
