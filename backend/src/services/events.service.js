@@ -4,10 +4,64 @@
  */
 import { db } from "../config/firebase.config.js";
 import { AppError, handleFirebaseError } from "../utils/error.js";
-import { withRetry, getDocument } from "../utils/firebase-utils.js";
+import { withRetry } from "../utils/firebase-utils.js";
 import logger from "../utils/logger.js";
 
 export class EventsService {
+  /**
+   * Normalize event data to match reference implementation standards
+   * @param {Object} eventData - Raw event data from Firebase
+   * @returns {Object} Normalized event data
+   */
+  normalizeEventData(eventData) {
+    if (!eventData) return null;
+
+    // Reference-aligned field mapping (simple and clean)
+    return {
+      id: eventData.id,
+      title: eventData.title || "Untitled Event",
+      description: eventData.description || "",
+      date: eventData.date || new Date().toISOString(),
+      location: eventData.location || "",
+      capacity: eventData.capacity || null,
+      category: eventData.category || "general",
+      status:
+        eventData.status ||
+        (new Date(eventData.date || new Date()) > new Date()
+          ? "upcoming"
+          : "completed"),
+      registeredCount: eventData.registeredCount || 0,
+      images: eventData.images || [],
+      poster: eventData.poster || null,
+      createdAt: eventData.createdAt || new Date().toISOString(),
+      updatedAt:
+        eventData.updatedAt || eventData.createdAt || new Date().toISOString(),
+      // Preserve any additional fields exactly as they are
+      ...Object.keys(eventData).reduce((acc, key) => {
+        if (
+          ![
+            "id",
+            "title",
+            "description",
+            "date",
+            "location",
+            "capacity",
+            "category",
+            "status",
+            "registeredCount",
+            "images",
+            "poster",
+            "createdAt",
+            "updatedAt",
+          ].includes(key)
+        ) {
+          acc[key] = eventData[key];
+        }
+        return acc;
+      }, {}),
+    };
+  }
+
   /**
    * Get all events from Firestore with roles
    * @returns {Promise<Array>} Array of event objects with roles
@@ -16,6 +70,7 @@ export class EventsService {
     try {
       logger.info("Fetching all events from Firestore");
 
+      // Simple direct query like reference implementation
       const eventsSnapshot = await withRetry(() =>
         db.collection("events").get()
       );
@@ -23,10 +78,11 @@ export class EventsService {
       logger.debug(`Found ${eventsSnapshot.size} events in Firestore`);
 
       const events = eventsSnapshot.docs.map((doc) => {
-        return {
+        const data = doc.data();
+        return this.normalizeEventData({
           id: doc.id,
-          ...doc.data(),
-        };
+          ...data,
+        });
       });
 
       // Enrich events with roles from event_roles collection
@@ -59,10 +115,10 @@ export class EventsService {
 
       logger.debug(`Found event with ID ${eventId}`);
 
-      const event = {
+      const event = this.normalizeEventData({
         id: eventDoc.id,
         ...eventDoc.data(),
-      };
+      });
 
       // Enrich event with roles from event_roles collection
       const enrichedEvents = await this.enrichEventsWithRoles([event]);
@@ -231,25 +287,12 @@ export class EventsService {
           }
         }
 
-        // Create processed role with user details for easy searching
         const processedRole = {
           userId: role.userId,
           role: role.role,
           permissions: role.permissions || [],
           assignedAt: new Date().toISOString(),
           expiration: role.expiration || null,
-          // Include user details for easy searching
-          userDetails: userDetails
-            ? {
-                name: userDetails.name || userDetails.displayName || "Unknown",
-                email: userDetails.email || "Unknown",
-                avatarId: userDetails.avatarId || null,
-              }
-            : null,
-          // Add searchable fields
-          searchableText: `${role.role} ${userDetails?.name || ""} ${
-            userDetails?.email || ""
-          }`.toLowerCase(),
         };
 
         processedRoles.push(processedRole);
@@ -260,15 +303,12 @@ export class EventsService {
           error: error.message,
         });
 
-        // Add role without user details if user lookup fails
         processedRoles.push({
           userId: role.userId,
           role: role.role,
           permissions: role.permissions || [],
           assignedAt: new Date().toISOString(),
           expiration: role.expiration || null,
-          userDetails: null,
-          searchableText: role.role.toLowerCase(),
         });
       }
     }
@@ -295,10 +335,13 @@ export class EventsService {
         db.collection("events").get()
       );
 
-      let events = eventsSnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
+      let events = eventsSnapshot.docs.map((doc) => {
+        const data = doc.data();
+        return this.normalizeEventData({
+          id: doc.id,
+          ...data,
+        });
+      });
 
       // Enrich events with roles from event_roles collection
       events = await this.enrichEventsWithRoles(events);
@@ -353,7 +396,39 @@ export class EventsService {
   }
 
   /**
-   * Enrich events with roles from subcollection and enrich with user details
+   * Populate user data for a single user ID
+   * @param {string} userId - User ID to populate
+   * @returns {Promise<Object|null>} User data or null if not found
+   */
+  async populateUser(userId) {
+    if (!userId) return null;
+
+    try {
+      const userDoc = await withRetry(() =>
+        db.collection("users").doc(userId).get()
+      );
+
+      if (!userDoc.exists) {
+        return null;
+      }
+
+      const userData = userDoc.data();
+      return {
+        name: userData.name || "Unknown",
+        email: userData.email || "Unknown",
+        avatarId: userData.avatarId || "default",
+        bio: userData.bio || "",
+        socialLinks: userData.socialLinks || {},
+        photoURL: userData.photoURL || null,
+      };
+    } catch (error) {
+      logger.warn("Failed to populate user", { userId, error: error.message });
+      return null;
+    }
+  }
+
+  /**
+   * Enrich events with roles from subcollection and populate user details
    * @param {Array} events - Array of events
    * @returns {Promise<Array>} Events enriched with roles from events/{eventId}/event_roles subcollection
    */
@@ -368,7 +443,6 @@ export class EventsService {
       const enrichedEvents = await Promise.all(
         events.map(async (event) => {
           try {
-            // Get roles from the event's subcollection: events/{eventId}/event_roles
             const rolesSnapshot = await withRetry(() =>
               db
                 .collection("events")
@@ -379,92 +453,31 @@ export class EventsService {
 
             const enrichedRoles = [];
 
-            // Process each role and enrich with user data
             for (const roleDoc of rolesSnapshot.docs) {
               const roleData = roleDoc.data();
-              try {
-                // Get user details if userId is provided
-                let userData = null;
-                if (roleData.userId) {
-                  userData = await getDocument(db, "users", roleData.userId);
-                }
+              const userData = await this.populateUser(roleData.userId);
 
-                const enrichedRole = {
-                  userId: roleData.userId || null,
-                  role: roleData.role,
-                  permissions: roleData.permissions || [],
-                  assignedAt:
-                    roleData.assignedAt ||
-                    roleData.createdAt ||
-                    new Date().toISOString(),
-                  expiration: roleData.expiration || null,
-                  userDetails: userData
-                    ? {
-                        name:
-                          userData.name || userData.displayName || "Unknown",
-                        email: userData.email || "Unknown",
-                        avatarId: userData.avatarId || null,
-                        photoURL: userData.photoURL || null,
-                        bio: userData.bio || null,
-                        socialLinks: userData.socialLinks || null,
-                        profileImage:
-                          userData.profileImage || userData.image || null,
-                        linkedin: userData.linkedin || null,
-                        instagram: userData.instagram || null,
-                        twitter: userData.twitter || null,
-                        github: userData.github || null,
-                        website: userData.website || null,
-                      }
-                    : roleData.userDetails || {
-                        name: roleData.name || "Unknown",
-                        email: roleData.email || "Unknown",
-                        avatarId: null,
-                        photoURL: null,
-                        bio: null,
-                        socialLinks: null,
-                        profileImage: null,
-                        linkedin: null,
-                        instagram: null,
-                        twitter: null,
-                        github: null,
-                        website: null,
-                      },
-                };
+              // Reference-aligned role structure (simple and clean)
+              const enrichedRole = {
+                userId: roleData.userId || null,
+                role: roleData.role,
+                permissions: roleData.permissions || [],
+                assignedAt:
+                  roleData.assignedAt ||
+                  roleData.createdAt ||
+                  new Date().toISOString(),
+                expiration: roleData.expiration || null,
+                userDetails: userData || {
+                  name: "Unknown User",
+                  email: "Unknown",
+                  avatarId: "default",
+                  bio: "",
+                  socialLinks: {},
+                  photoURL: null,
+                },
+              };
 
-                enrichedRoles.push(enrichedRole);
-              } catch (userError) {
-                logger.warn("Failed to get user details for role", {
-                  userId: roleData.userId,
-                  eventId: event.id,
-                  error: userError.message,
-                });
-
-                // Add role without user details if user lookup fails
-                enrichedRoles.push({
-                  userId: roleData.userId,
-                  role: roleData.role,
-                  permissions: roleData.permissions || [],
-                  assignedAt:
-                    roleData.assignedAt ||
-                    roleData.createdAt ||
-                    new Date().toISOString(),
-                  expiration: roleData.expiration,
-                  userDetails: {
-                    name: "Unknown User",
-                    email: "Unknown",
-                    avatarId: null,
-                    photoURL: null,
-                    bio: null,
-                    socialLinks: null,
-                    profileImage: null,
-                    linkedin: null,
-                    instagram: null,
-                    twitter: null,
-                    github: null,
-                    website: null,
-                  },
-                });
-              }
+              enrichedRoles.push(enrichedRole);
             }
 
             // Calculate role counts
@@ -527,5 +540,107 @@ export class EventsService {
         },
       }));
     }
+  }
+
+  /**
+   * Get events with optional details inclusion
+   * @param {Array} includeOptions - Array of options to include (roles, participants, details)
+   * @returns {Promise<Array>} Events with requested details
+   */
+  async getEventsWithDetails(includeOptions = []) {
+    try {
+      logger.info("Fetching events with details", { includeOptions });
+
+      // Simple direct query like reference implementation
+      const eventsSnapshot = await withRetry(() =>
+        db.collection("events").get()
+      );
+
+      logger.debug(
+        `Found ${eventsSnapshot.size} events, applying details inclusion`
+      );
+
+      const events = eventsSnapshot.docs.map((doc) => {
+        const data = doc.data();
+        return this.normalizeEventData({
+          id: doc.id,
+          ...data,
+        });
+      });
+
+      // Apply details inclusion based on options
+      if (
+        includeOptions.includes("roles") ||
+        includeOptions.includes("participants")
+      ) {
+        return await this.enrichEventsWithRoles(events);
+      }
+
+      return events;
+    } catch (error) {
+      logger.error("Failed to fetch events with details", {
+        error: error.message,
+        includeOptions,
+      });
+      throw handleFirebaseError(error);
+    }
+  }
+
+  /**
+   * Get event by ID with optional details inclusion
+   * @param {string} eventId - Event ID
+   * @param {Array} includeOptions - Array of options to include (roles, participants, details)
+   * @returns {Promise<Object|null>} Event with requested details or null if not found
+   */
+  async getEventWithDetails(eventId, includeOptions = []) {
+    try {
+      logger.info(`Fetching event with details: ${eventId}`, {
+        includeOptions,
+      });
+
+      // Get event document
+      const eventDoc = await withRetry(() =>
+        db.collection("events").doc(eventId).get()
+      );
+
+      if (!eventDoc.exists) {
+        logger.warn(`Event with ID ${eventId} not found`);
+        return null;
+      }
+
+      const event = this.normalizeEventData({
+        id: eventDoc.id,
+        ...eventDoc.data(),
+      });
+
+      // Apply details inclusion based on options
+      if (
+        includeOptions.includes("roles") ||
+        includeOptions.includes("participants")
+      ) {
+        const enrichedEvents = await this.enrichEventsWithRoles([event]);
+        return enrichedEvents[0];
+      }
+
+      logger.debug(`Event retrieved: ${eventId}`);
+      return event;
+    } catch (error) {
+      logger.error("Failed to fetch event with details", {
+        error: error.message,
+        eventId,
+        includeOptions,
+      });
+      throw handleFirebaseError(error);
+    }
+  }
+
+  /**
+   * Legacy method - Get event by ID with roles data (backward compatibility)
+   * @param {string} eventId - Event ID
+   * @returns {Promise<Object|null>} Event with roles data or null if not found
+   * @deprecated Use getEventWithDetails instead
+   */
+  async getEventByIdWithRoles(eventId) {
+    return this.getEventWithDetails(eventId, ["roles", "participants"]);
   }
 }

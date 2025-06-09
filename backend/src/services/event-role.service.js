@@ -190,6 +190,39 @@ export class EventRoleService {
   }
 
   /**
+   * Populate user data for roles
+   * @param {string} userId - User ID
+   * @returns {Promise<Object|null>} User data
+   */
+  async populateUserForRole(userId) {
+    if (!userId) return null;
+
+    try {
+      const userDoc = await withRetry(() =>
+        db.collection("users").doc(userId).get()
+      );
+
+      if (!userDoc.exists) return null;
+
+      const userData = userDoc.data();
+      return {
+        id: userDoc.id,
+        name: userData.name || "Unknown",
+        email: userData.email || "Unknown",
+        avatarId: userData.avatarId || "default",
+        bio: userData.bio || "",
+        socialLinks: userData.socialLinks || {},
+      };
+    } catch (error) {
+      logger.warn("Failed to populate user for role", {
+        userId,
+        error: error.message,
+      });
+      return null;
+    }
+  }
+
+  /**
    * Enrich roles with user and event data
    * @param {Array} roles - Array of roles
    * @returns {Promise<Array>} Enriched roles
@@ -198,10 +231,8 @@ export class EventRoleService {
     try {
       const enrichedRoles = await Promise.all(
         roles.map(async (role) => {
-          // Get user data
-          const userData = await getDocument(db, "users", role.userId);
+          const userData = await this.populateUserForRole(role.userId);
 
-          // Get event data if eventId exists
           let eventData = null;
           if (role.eventId) {
             eventData = await getDocument(db, "events", role.eventId);
@@ -209,14 +240,7 @@ export class EventRoleService {
 
           return {
             ...role,
-            user: userData
-              ? {
-                  id: userData.id,
-                  name: userData.name,
-                  email: userData.email,
-                  avatarId: userData.avatarId,
-                }
-              : null,
+            user: userData,
             event: eventData
               ? {
                   id: eventData.id,

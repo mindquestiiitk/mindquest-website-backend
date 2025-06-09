@@ -8,6 +8,7 @@ import {
   clientAuthMiddleware,
   clientIsAdmin,
 } from "../middleware/client-auth.middleware.js";
+import { arcjetProtection } from "../middleware/arcjet.middleware.js";
 import logger from "../utils/logger.js";
 
 const router = express.Router();
@@ -22,12 +23,24 @@ router.use((req, res, next) => {
   next();
 });
 
-// Public routes
-// Get all events
-router.get("/", eventsController.getAllEvents);
+// Public routes with security protection
+// Get all events (basic data only)
+router.get("/", arcjetProtection, eventsController.getAllEvents);
 
-// Get event by ID
-router.get("/:id", eventsController.getEventById);
+// Get all events with complete details (roles + participants)
+router.get("/complete", arcjetProtection, eventsController.getCompleteEvents);
+
+// Get event by ID (basic data only)
+router.get("/:id", arcjetProtection, eventsController.getEventById);
+
+// Get event by ID with complete details (roles + participants)
+router.get(
+  "/:id/complete",
+  arcjetProtection,
+  eventsController.getCompleteEvent
+);
+
+// Legacy endpoints removed - use dedicated endpoints (/complete) instead
 
 // Protected routes - none currently needed
 
