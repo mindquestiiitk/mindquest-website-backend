@@ -95,24 +95,26 @@ export async function logSecurityEvent(type, severity, details) {
       logger.info(`Security info: ${type}`, { securityEvent: event });
     }
 
-    // In a production environment, we would also store this in Firestore
-    // This is commented out to avoid dependencies, but would be implemented in production
-    /*
+    // Store security events in Firestore for production monitoring
     try {
+      // Import Firebase dependencies dynamically to avoid circular imports
+      const { db } = await import("../config/firebase.config.js");
+
       // Store in Firestore security_events collection
-      const db = getFirestore();
-      await db.collection('security_events').add({
+      await db.collection("security_events").add({
         ...event,
-        created: FieldValue.serverTimestamp(),
+        createdAt: new Date(),
       });
+
+      logger.debug("Security event stored in Firestore", { type, severity });
     } catch (dbError) {
       logger.error("Failed to store security event in database", {
         error: dbError.message,
         type,
         severity,
       });
+      // Don't throw - logging should not break the application
     }
-    */
 
     // Log performance
     const duration = Date.now() - startTime;
