@@ -104,7 +104,6 @@ export class AuthController {
               email: decodedToken.email,
             });
 
-            // Ensure user profile and role collections are properly set up
             await this.authService.ensureUserProfile(decodedToken.uid, {
               email: email || decodedToken.email,
               name: name || decodedToken.name,
@@ -273,7 +272,6 @@ export class AuthController {
           deviceInfo
         );
 
-        // Also ensure the user profile is properly set up
         await this.authService.ensureUserProfile(result.user.id, {
           email: result.user.email,
           name: result.user.name,
@@ -784,7 +782,6 @@ export class AuthController {
           // Set the session ID to the user's UID for collection-based security
           result.sessionId = result.user.id;
 
-          // Also ensure the user profile is properly set up
           await this.authService.ensureUserProfile(result.user.id, {
             email: result.user.email,
             name: result.user.name,
@@ -825,7 +822,18 @@ export class AuthController {
         );
       }
 
-      // Include user data in the response
+      // Get complete user profile from Firestore to include avatarId
+      let userProfile = null;
+      try {
+        userProfile = await this.authService.getUserById(result.user?.id);
+      } catch (profileError) {
+        logger.warn("Failed to fetch user profile for avatarId", {
+          userId: result.user?.id,
+          error: profileError.message,
+        });
+      }
+
+      // Include user data in the response with complete profile information
       res.json({
         success: true,
         data: {
@@ -836,12 +844,16 @@ export class AuthController {
             displayName: result.user?.name || "",
             name: result.user?.name || "",
             role: result.user?.role || "user",
+            avatarId: userProfile?.avatarId || "default",
+            bio: userProfile?.bio || "",
+            socialLinks: userProfile?.socialLinks || {},
             isAdmin:
               result.user?.role === "admin" ||
               result.user?.role === "superadmin" ||
               false,
             emailVerified: result.user?.emailVerified || false,
-            photoURL: result.user?.photoURL || null,
+            photoURL: result.user?.photoURL || userProfile?.photoURL || null,
+            provider: userProfile?.provider || "password",
           },
         },
       });

@@ -25,8 +25,7 @@ import adminRoutes from "./routes/admin.routes.js";
 import superadminRoutes from "./routes/superadmin.routes.js";
 import healthRoutes from "./routes/health.routes.js";
 import userRoutes from "./routes/user.routes.js";
-import chatRoutes from "./routes/chat.routes.js";
-import counselorRoutes from "./routes/counselor.routes.js";
+// Removed unused chat and counselor routes to reduce technical debt
 import arcjetRoutes from "./routes/arcjet.routes.js";
 
 const app = express();
@@ -129,8 +128,7 @@ app.use("/admin", adminRoutes);
 app.use("/superadmin", superadminRoutes);
 app.use("/health", healthRoutes);
 app.use("/users", userRoutes);
-app.use("/chat", chatRoutes);
-app.use("/counselors", counselorRoutes);
+// Removed unused chat and counselor endpoints to reduce technical debt
 app.use("/api", arcjetRoutes);
 
 // Apply Arcjet analytics middleware after routes to collect security metrics

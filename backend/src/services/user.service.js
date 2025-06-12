@@ -1,6 +1,7 @@
 import { db } from "../config/firebase.config.js";
 import { UserRole } from "./auth.service.js";
 import { BaseService } from "./base.service.js";
+import { withRetry } from "../utils/firebase-utils.js";
 
 export class UserService extends BaseService {
   constructor() {
@@ -23,7 +24,7 @@ export class UserService extends BaseService {
       const allowedFields = [
         "displayName",
         "bio",
-        "avatar",
+        "avatarId",
         "preferences",
         "socialLinks",
       ];
@@ -65,24 +66,45 @@ export class UserService extends BaseService {
 
   async searchUsers(query) {
     try {
-      let usersQuery;
+      let searchQuery = {};
 
       if (!query || query.trim() === "") {
         // If no query provided, return all users (limited for performance)
-        usersQuery = db.collection("users").limit(50);
+        searchQuery = {
+          orderBy: [["name", "asc"]],
+          limit: 50,
+        };
       } else {
-        // Search by displayName, email, or name fields
-        const searchTerm = query.toLowerCase().trim();
-
-        // For now, we'll get all users and filter client-side since Firestore
-        // doesn't support OR queries across different fields easily
-        usersQuery = db.collection("users").limit(100);
+        // For basic search, we'll use cached read with limit
+        searchQuery = {
+          orderBy: [["name", "asc"]],
+          limit: 100,
+        };
       }
 
-      const snapshot = await usersQuery.get();
-      let users = snapshot.docs.map((doc) => ({
+      // Simple direct query like reference implementation
+      const usersSnapshot = await withRetry(() => {
+        let query = db.collection("users");
+        if (searchQuery.orderBy) {
+          searchQuery.orderBy.forEach(([field, direction]) => {
+            query = query.orderBy(field, direction);
+          });
+        }
+        if (searchQuery.limit) {
+          query = query.limit(searchQuery.limit);
+        }
+        return query.get();
+      });
+
+      let users = usersSnapshot.docs.map((doc) => ({
         id: doc.id,
         ...doc.data(),
+      }));
+
+      // Remove sensitive data and apply client-side filtering if needed
+      users = users.map((user) => ({
+        id: user.id,
+        ...user,
         // Remove sensitive data
         password: undefined,
         refreshTokens: undefined,

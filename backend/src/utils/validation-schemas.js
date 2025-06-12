@@ -30,6 +30,30 @@ const VALIDATION_MESSAGES = {
  * Validation schemas for all API endpoints
  */
 export const schemas = {
+  events: {
+    getById: {
+      id: {
+        type: "string",
+        required: true,
+        regex: /^[a-zA-Z0-9_-]{1,50}$/,
+        message:
+          "Event ID must be alphanumeric with underscores/hyphens, max 50 characters",
+        maxLength: 50,
+      },
+    },
+  },
+  users: {
+    getById: {
+      userId: {
+        type: "string",
+        required: true,
+        regex: /^[a-zA-Z0-9_-]{1,50}$/,
+        message:
+          "User ID must be alphanumeric with underscores/hyphens, max 50 characters",
+        maxLength: 50,
+      },
+    },
+  },
   auth: {
     register: {
       email: {
@@ -165,6 +189,15 @@ export const schemas = {
         type: "string",
         required: false,
         maxLength: 100,
+      },
+      bio: {
+        type: "string",
+        required: false,
+        maxLength: 500,
+      },
+      socialLinks: {
+        type: "object",
+        required: false,
       },
       email: {
         type: "string",

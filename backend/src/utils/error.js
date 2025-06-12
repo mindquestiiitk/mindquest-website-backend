@@ -112,11 +112,24 @@ function generateErrorId() {
  * @returns {boolean} Whether the error is retryable
  */
 export function isRetryableError(errorCode, category) {
+  // CRITICAL: Never retry quota exhaustion errors to prevent infinite loops
+  if (
+    errorCode === 8 ||
+    String(errorCode) === "8" ||
+    errorCode === "resource-exhausted" ||
+    errorCode === "firestore/resource-exhausted" ||
+    String(errorCode).includes("RESOURCE_EXHAUSTED") ||
+    String(errorCode).includes("Quota exceeded")
+  ) {
+    return false;
+  }
+
   // If category is provided, use it
   if (category) {
     return [
       ErrorCategory.NETWORK,
       ErrorCategory.UNAVAILABLE,
+      // Note: RATE_LIMIT is still retryable for non-quota errors
       ErrorCategory.RATE_LIMIT,
     ].includes(category);
   }
@@ -132,11 +145,10 @@ export function isRetryableError(errorCode, category) {
       return true;
     }
 
-    // Rate limit errors
+    // Rate limit errors (but NOT quota exhaustion)
     if (
       errorCode === "rate_limit_exceeded" ||
-      errorCode === "auth/too-many-requests" ||
-      errorCode === "firestore/resource-exhausted"
+      errorCode === "auth/too-many-requests"
     ) {
       return true;
     }
@@ -327,6 +339,13 @@ const firebaseErrorMessages = {
   "firestore/invalid-argument":
     "The information you provided is invalid. Please check your input and try again.",
 
+  // Quota exhaustion errors (multiple possible formats)
+  8: "Our service is temporarily experiencing high demand. Please try again in a few minutes.",
+  "resource-exhausted":
+    "Our service is temporarily experiencing high demand. Please try again in a few minutes.",
+  RESOURCE_EXHAUSTED:
+    "Our service is temporarily experiencing high demand. Please try again in a few minutes.",
+
   // Default error
   default:
     "Something went wrong. Please try again or contact support if the problem continues.",
@@ -338,8 +357,11 @@ const firebaseErrorMessages = {
  * @returns {string} Error category
  */
 export function categorizeFirebaseError(errorCode) {
+  // Convert errorCode to string to handle numeric codes safely
+  const errorCodeStr = String(errorCode || "");
+
   // Authentication errors
-  if (errorCode?.startsWith("auth/")) {
+  if (errorCodeStr.startsWith("auth/")) {
     return ErrorCategory.AUTHENTICATION;
   }
 
@@ -360,29 +382,34 @@ export function categorizeFirebaseError(errorCode) {
 
   // Network errors
   if (
-    errorCode === "auth/network-request-failed" ||
-    errorCode === "firestore/network-request-failed"
+    errorCodeStr === "auth/network-request-failed" ||
+    errorCodeStr === "firestore/network-request-failed"
   ) {
     return ErrorCategory.NETWORK;
   }
 
-  // Rate limit errors
+  // Rate limit errors (but quota exhaustion should be handled separately)
   if (
-    errorCode === "auth/too-many-requests" ||
-    errorCode === "firestore/resource-exhausted"
+    errorCodeStr === "auth/too-many-requests" ||
+    errorCodeStr === "firestore/resource-exhausted" ||
+    errorCodeStr === "resource-exhausted" ||
+    errorCode === 8 ||
+    errorCodeStr === "8" ||
+    errorCodeStr.includes("RESOURCE_EXHAUSTED") ||
+    errorCodeStr.includes("Quota exceeded")
   ) {
     return ErrorCategory.RATE_LIMIT;
   }
 
   // Service unavailable errors
-  if (errorCode === "firestore/unavailable") {
+  if (errorCodeStr === "firestore/unavailable") {
     return ErrorCategory.UNAVAILABLE;
   }
 
   // Internal errors
   if (
-    errorCode === "firestore/internal" ||
-    errorCode === "firestore/data-loss"
+    errorCodeStr === "firestore/internal" ||
+    errorCodeStr === "firestore/data-loss"
   ) {
     return ErrorCategory.INTERNAL;
   }
@@ -406,6 +433,9 @@ export const getFirebaseErrorDetails = (error) => {
   // Extract the error code from the Firebase error
   const errorCode = error.code || "default";
 
+  // Convert errorCode to string to handle numeric codes (like quota exhaustion code 8)
+  const errorCodeStr = String(errorCode);
+
   // Get the user-friendly message or use the original error message
   const message =
     firebaseErrorMessages[errorCode] ||
@@ -414,7 +444,20 @@ export const getFirebaseErrorDetails = (error) => {
 
   // Determine appropriate status code based on error type
   let statusCode = 400; // Default status code
+
+  // Handle Firebase quota exhaustion (multiple possible formats)
   if (
+    errorCode === 8 ||
+    errorCodeStr === "8" ||
+    errorCode === "resource-exhausted" ||
+    errorCodeStr === "resource-exhausted" ||
+    errorCodeStr.includes("RESOURCE_EXHAUSTED") ||
+    errorCodeStr.includes("Quota exceeded") ||
+    error.message?.includes("Quota exceeded") ||
+    error.message?.includes("resource-exhausted")
+  ) {
+    statusCode = 503; // Service Unavailable
+  } else if (
     errorCode === "auth/user-not-found" ||
     errorCode === "auth/wrong-password" ||
     errorCode === "auth/invalid-credential"
@@ -425,7 +468,8 @@ export const getFirebaseErrorDetails = (error) => {
   } else if (errorCode === "auth/too-many-requests") {
     statusCode = 429; // Too Many Requests
   } else if (
-    errorCode.startsWith("firestore/permission-denied") ||
+    (typeof errorCodeStr === "string" &&
+      errorCodeStr.startsWith("firestore/permission-denied")) ||
     errorCode === "auth/unauthorized-domain"
   ) {
     statusCode = 403; // Forbidden

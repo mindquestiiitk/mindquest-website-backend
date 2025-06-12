@@ -1,37 +1,26 @@
 import { db } from "../config/firebase.config.js";
 import logger from "../utils/logger.js";
+import { withRetry } from "../utils/firebase-utils.js";
 
 export class TeamsService {
   async getAllTeamMembers() {
     try {
-      logger.info("Fetching all team members from Firestore...");
-      try {
-        const teamsSnapshot = await db.collection("teams").get();
-        logger.debug(`Number of documents in snapshot: ${teamsSnapshot.size}`);
+      logger.info("Fetching all team members");
 
-        if (teamsSnapshot.size > 0) {
-          const teamMembers = teamsSnapshot.docs.map((doc) => {
-            const data = doc.data();
-            return {
-              id: doc.id,
-              ...data,
-            };
-          });
+      // Simple direct query like reference implementation
+      const teamsSnapshot = await withRetry(() =>
+        db.collection("teams").orderBy("name", "asc").limit(100).get()
+      );
 
-          logger.debug(
-            `Processed ${teamMembers.length} team members from Firestore`
-          );
-          return teamMembers;
-        } else {
-          logger.warn("No team members found in Firestore");
-          return [];
-        }
-      } catch (firestoreError) {
-        logger.error("Error accessing Firestore:", {
-          error: firestoreError.message,
-        });
-        throw firestoreError;
-      }
+      const teamMembers = teamsSnapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+
+      logger.debug(
+        `Retrieved ${teamMembers.length} team members from Firestore`
+      );
+      return teamMembers;
     } catch (error) {
       logger.error("Error in getAllTeamMembers:", { error: error.message });
       throw error;

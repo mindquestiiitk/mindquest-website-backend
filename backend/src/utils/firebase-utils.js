@@ -27,20 +27,36 @@ export const withRetry = async (
       lastError = error;
 
       // Only retry on specific Firebase errors that are transient
+      // CRITICAL: Never retry resource-exhausted errors to prevent quota consumption loops
       const isTransient =
         error.code === "unavailable" ||
-        error.code === "resource-exhausted" ||
         error.code === "deadline-exceeded" ||
         error.code === "internal" ||
         error.code === "cancelled" ||
         error.message?.includes("network error");
 
-      if (!isTransient || attempt === maxRetries) {
-        logger.error("Firebase operation failed permanently", {
-          error: error.message,
-          code: error.code,
-          attempt,
-        });
+      // Explicitly check for quota exhaustion and never retry
+      const isQuotaExhausted =
+        error.code === "resource-exhausted" ||
+        error.code === 8 ||
+        String(error.code) === "8" ||
+        error.message?.includes("Quota exceeded") ||
+        error.message?.includes("RESOURCE_EXHAUSTED");
+
+      if (!isTransient || attempt === maxRetries || isQuotaExhausted) {
+        if (isQuotaExhausted) {
+          logger.error("Firebase quota exhausted - not retrying", {
+            error: error.message,
+            code: error.code,
+            attempt,
+          });
+        } else {
+          logger.error("Firebase operation failed permanently", {
+            error: error.message,
+            code: error.code,
+            attempt,
+          });
+        }
         throw error;
       }
 
